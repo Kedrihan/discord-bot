@@ -81,9 +81,6 @@ public class DiscordBotService : IHostedService
     {
         _logger.LogInformation("Connecté en tant que {CurrentUser} !", _client.CurrentUser);
 
-        // Définition de l'activité initiale
-        await _client.SetGameAsync(_settingsService.Settings.BotStatusMessage);
-
         // Découverte et chargement des modules de commandes
         await _interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), _serviceProvider);
 

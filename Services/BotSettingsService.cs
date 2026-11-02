@@ -2,10 +2,7 @@ namespace DiscordBot.Services;
 
 public class BotSettings
 {
-    public string BotStatusMessage { get; set; } = "En cours d'exécution sur Oracle Cloud";
-    public string DefaultPrefix { get; set; } = "!";
-    public bool EnableWelcomeMessages { get; set; } = true;
-    public string WelcomeChannel { get; set; } = "général";
+    // Espace réservé pour vos futurs paramètres
 }
 
 public class BotSettingsService
