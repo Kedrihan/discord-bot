@@ -14,8 +14,19 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Service de paramètres et d'état du bot
+// Client HTTP pour les requêtes d'API externes
+builder.Services.AddHttpClient();
+
+// Service d'état global du bot
 builder.Services.AddSingleton<BotSettingsService>();
+
+// Services dédiés à la Veille Technologique
+builder.Services.AddSingleton<TechWatchConfigService>();
+builder.Services.AddSingleton<SentArticlesHistoryService>();
+builder.Services.AddSingleton<NewsAggregatorService>();
+builder.Services.AddSingleton<GeminiSummarizerService>();
+builder.Services.AddSingleton<TechWatchService>();
+builder.Services.AddHostedService<TechWatchScheduler>();
 
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig
