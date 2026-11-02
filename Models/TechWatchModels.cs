@@ -34,7 +34,7 @@ public class TechWatchSettings
 
     // IA & Formatage
     public string GeminiApiKey { get; set; } = "";
-    public string GeminiModel { get; set; } = "gemini-2.0-flash";
+    public string GeminiModel { get; set; } = "gemini-flash-latest";
     public int MaxArticles { get; set; } = 7;
     public bool TranslateToFrench { get; set; } = true;
 }

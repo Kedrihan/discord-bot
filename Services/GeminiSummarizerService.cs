@@ -46,8 +46,9 @@ public class GeminiSummarizerService
 
     private async Task<string> CallGeminiAsync(List<NewsArticle> articles, TechWatchSettings settings)
     {
-        var model = string.IsNullOrWhiteSpace(settings.GeminiModel) ? "gemini-2.0-flash" : settings.GeminiModel;
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GeminiApiKey}";
+        var model = string.IsNullOrWhiteSpace(settings.GeminiModel) || settings.GeminiModel.StartsWith("gemini-1.") || settings.GeminiModel == "gemini-2.0-flash"
+            ? "gemini-flash-latest" 
+            : settings.GeminiModel;
 
         var articlesListText = new StringBuilder();
         foreach (var a in articles)
@@ -86,7 +87,18 @@ Consignes :
         var json = JsonSerializer.Serialize(requestBody);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GeminiApiKey}";
         var response = await _httpClient.PostAsync(url, content);
+
+        // Si le modèle configuré échoue (ex: 404 déprécié ou 503 temporaire), repli automatique sur gemini-flash-latest
+        if (!response.IsSuccessStatusCode && model != "gemini-flash-latest")
+        {
+            _logger.LogWarning("Le modèle {Model} a échoué ({Status}). Repli automatique sur gemini-flash-latest...", model, response.StatusCode);
+            url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={settings.GeminiApiKey}";
+            content = new StringContent(json, Encoding.UTF8, "application/json");
+            response = await _httpClient.PostAsync(url, content);
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             var err = await response.Content.ReadAsStringAsync();
