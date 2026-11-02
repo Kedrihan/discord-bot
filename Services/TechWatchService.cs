@@ -71,8 +71,11 @@ public class TechWatchService
         {
             if (settings.DestinationType == DestinationType.UserDm)
             {
-                var user = _discordClient.GetUser(targetId) 
-                    ?? await _discordClient.Rest.GetUserAsync(targetId);
+                IUser? user = _discordClient.GetUser(targetId);
+                if (user == null)
+                {
+                    user = await _discordClient.Rest.GetUserAsync(targetId);
+                }
 
                 if (user == null)
                 {
@@ -84,8 +87,11 @@ public class TechWatchService
             }
             else
             {
-                var channel = _discordClient.GetChannel(targetId) as IMessageChannel
-                    ?? await _discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
+                IMessageChannel? channel = _discordClient.GetChannel(targetId) as IMessageChannel;
+                if (channel == null)
+                {
+                    channel = await _discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
+                }
 
                 if (channel == null)
                 {

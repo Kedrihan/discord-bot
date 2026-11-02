@@ -55,36 +55,33 @@ public class TechWatchScheduler : BackgroundService
             return;
         }
 
-        if (TimeSpan.TryParse(settings.ScheduleTime, out var targetTime))
+        if (now.Hour == settings.ScheduleTime.Hour && now.Minute == settings.ScheduleTime.Minute)
         {
-            if (now.Hour == targetTime.Hours && now.Minute == targetTime.Minutes)
+            // Clé unique pour ne pas exécuter deux fois la même minute
+            var executionKey = $"{now:yyyy-MM-dd-HH-mm}";
+            if (_lastExecutionKey == executionKey)
             {
-                // Clé unique pour ne pas exécuter deux fois la même minute
-                var executionKey = $"{now:yyyy-MM-dd-HH-mm}";
-                if (_lastExecutionKey == executionKey)
-                {
-                    return;
-                }
-
-                _lastExecutionKey = executionKey;
-                _logger.LogInformation("Déclenchement planifié de la veille technologique ({Day} {Time})", currentDay, settings.ScheduleTime);
-
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var (success, msg) = await _techWatchService.ExecuteWatchAsync(isManualTest: false);
-                        if (!success)
-                        {
-                            _logger.LogWarning("Échec de l'envoi de la veille techno planifiée : {Reason}", msg);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Erreur lors de l'exécution automatique de la veille techno");
-                    }
-                });
+                return;
             }
+
+            _lastExecutionKey = executionKey;
+            _logger.LogInformation("Déclenchement planifié de la veille technologique ({Day} {Time})", currentDay, settings.ScheduleTime.ToString("HH:mm"));
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var (success, msg) = await _techWatchService.ExecuteWatchAsync(isManualTest: false);
+                    if (!success)
+                    {
+                        _logger.LogWarning("Échec de l'envoi de la veille techno planifiée : {Reason}", msg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Erreur lors de l'exécution automatique de la veille techno");
+                }
+            });
         }
     }
 }

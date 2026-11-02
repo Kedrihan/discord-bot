@@ -12,7 +12,7 @@ public class TechWatchSettings
 
     // Planification
     public List<DayOfWeek> ScheduleDays { get; set; } = new() { DayOfWeek.Monday };
-    public string ScheduleTime { get; set; } = "07:30"; // Format "HH:mm"
+    public TimeOnly ScheduleTime { get; set; } = new TimeOnly(7, 30);
 
     // Destinataire
     public DestinationType DestinationType { get; set; } = DestinationType.UserDm;

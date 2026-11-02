@@ -126,7 +126,7 @@
                 }
             </div>
             <p class="text-secondary small mb-3">
-                Récapitulatif envoyé à <strong>@TechWatchConfig.GetSettings().ScheduleTime</strong> 
+                Récapitulatif envoyé à <strong>@TechWatchConfig.GetSettings().ScheduleTime.ToString("HH:mm")</strong> 
                 (@string.Join(", ", TechWatchConfig.GetSettings().ScheduleDays.Select(d => d.ToString().Substring(0, 3))))
             </p>
             <div class="d-flex flex-wrap gap-1 mb-3">
