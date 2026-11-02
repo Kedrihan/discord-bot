@@ -1,4 +1,5 @@
 @page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
 @rendermode InteractiveServer
 @implements IDisposable
 @inject DiscordSocketClient DiscordClient

@@ -1,6 +1,43 @@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)">
+            <NotAuthorized>
+                <div class="container py-5 text-center">
+                    <div class="card p-5 mx-auto shadow-sm" style="max-width: 520px;">
+                        @if (context.User.Identity?.IsAuthenticated == true)
+                        {
+                            <div class="mb-3">
+                                <i class="bi bi-shield-x text-danger fs-1"></i>
+                            </div>
+                            <h4 class="fw-bold text-danger mb-2">Accès Refusé</h4>
+                            <p class="text-secondary mb-3">
+                                Votre compte Discord (<strong>@context.User.Identity.Name</strong>) n'est pas autorisé à administrer ce bot.
+                            </p>
+                            <div>
+                                <a href="/logout" class="btn btn-outline-secondary px-4">
+                                    <i class="bi bi-box-arrow-right me-1"></i> Changer de compte
+                                </a>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <i class="bi bi-shield-lock text-primary fs-1"></i>
+                            </div>
+                            <h4 class="fw-bold mb-2">Connexion Requise</h4>
+                            <p class="text-secondary mb-4">
+                                Ce dashboard est privé. Veuillez vous authentifier avec votre compte Discord pour y accéder.
+                            </p>
+                            <div>
+                                <a href="/login" class="btn btn-discord px-4 py-2 fw-semibold">
+                                    <i class="bi bi-discord me-2"></i> Se connecter avec Discord
+                                </a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
     <NotFound>

@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@inject IConfiguration Configuration
 
 <nav class="navbar navbar-expand-lg navbar-dark px-3 mb-4">
     <div class="container-fluid">
@@ -6,13 +7,47 @@
             <i class="bi bi-discord text-primary fs-3"></i>
             <span>DiscordBot Admin</span>
         </a>
-        <div class="navbar-nav ms-auto flex-row gap-3">
+        
+        <div class="navbar-nav flex-row gap-3 me-auto ms-3 d-none d-md-flex">
             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2 me-1"></i> Dashboard
             </NavLink>
             <NavLink class="nav-link" href="/settings">
                 <i class="bi bi-gear me-1"></i> Paramètres
             </NavLink>
+        </div>
+
+        <div class="navbar-nav ms-auto flex-row align-items-center gap-3">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="d-flex align-items-center gap-2">
+                        @{
+                            var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                            var avatar = context.User.FindFirst("urn:discord:avatar")?.Value;
+                            var avatarUrl = !string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(avatar)
+                                ? $"https://cdn.discordapp.com/avatars/{userId}/{avatar}.png?size=64"
+                                : null;
+                        }
+                        @if (!string.IsNullOrEmpty(avatarUrl))
+                        {
+                            <img src="@avatarUrl" alt="Avatar" class="rounded-circle" width="32" height="32" />
+                        }
+                        else
+                        {
+                            <i class="bi bi-person-circle fs-5 text-light"></i>
+                        }
+                        <span class="small fw-semibold text-light">@context.User.Identity?.Name</span>
+                        <a href="/logout" class="btn btn-sm btn-outline-danger ms-2" title="Se déconnecter">
+                            <i class="bi bi-box-arrow-right"></i>
+                        </a>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/login" class="btn btn-sm btn-discord px-3">
+                        <i class="bi bi-discord me-1"></i> Connexion
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
     </div>
 </nav>
