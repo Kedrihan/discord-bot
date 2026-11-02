@@ -1,5 +1,6 @@
 @page "/"
 @rendermode InteractiveServer
+@implements IDisposable
 @inject DiscordSocketClient DiscordClient
 @inject BotSettingsService SettingsService
 
@@ -58,7 +59,7 @@
                 <span class="text-secondary small text-uppercase fw-semibold">Uptime</span>
                 <i class="bi bi-clock-history fs-4 text-success"></i>
             </div>
-            <h3 class="mb-0 fw-bold">@FormatUptime(SettingsService.Uptime)</h3>
+            <h3 class="mb-0 fw-bold text-success font-monospace">@FormatUptime(SettingsService.Uptime)</h3>
             <div class="small text-secondary mt-2">Depuis le démarrage</div>
         </div>
     </div>
@@ -122,6 +123,26 @@
 </div>
 
 @code {
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        // Abonnement aux événements Discord pour mise à jour instantanée
+        DiscordClient.LatencyUpdated += OnLatencyUpdatedAsync;
+        DiscordClient.Connected += OnConnectedAsync;
+        DiscordClient.Disconnected += OnDisconnectedAsync;
+
+        // Timer pour faire défiler les secondes de l'uptime en direct (1s)
+        _timer = new Timer(async _ =>
+        {
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    private Task OnLatencyUpdatedAsync(int oldLatency, int newLatency) => InvokeAsync(StateHasChanged);
+    private Task OnConnectedAsync() => InvokeAsync(StateHasChanged);
+    private Task OnDisconnectedAsync(Exception ex) => InvokeAsync(StateHasChanged);
+
     private void RefreshState()
     {
         StateHasChanged();
@@ -130,9 +151,17 @@
     private string FormatUptime(TimeSpan uptime)
     {
         if (uptime.TotalDays >= 1)
-            return $"{(int)uptime.TotalDays}j {uptime.Hours}h {uptime.Minutes}m";
+            return $"{(int)uptime.TotalDays}j {uptime.Hours:D2}h {uptime.Minutes:D2}m {uptime.Seconds:D2}s";
         if (uptime.TotalHours >= 1)
-            return $"{(int)uptime.TotalHours}h {uptime.Minutes}m {uptime.Seconds}s";
-        return $"{uptime.Minutes}m {uptime.Seconds}s";
+            return $"{(int)uptime.TotalHours:D2}h {uptime.Minutes:D2}m {uptime.Seconds:D2}s";
+        return $"{uptime.Minutes:D2}m {uptime.Seconds:D2}s";
+    }
+
+    public void Dispose()
+    {
+        DiscordClient.LatencyUpdated -= OnLatencyUpdatedAsync;
+        DiscordClient.Connected -= OnConnectedAsync;
+        DiscordClient.Disconnected -= OnDisconnectedAsync;
+        _timer?.Dispose();
     }
 }
