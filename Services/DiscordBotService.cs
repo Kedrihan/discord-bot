@@ -14,6 +14,7 @@ public class DiscordBotService : IHostedService
     private readonly InteractionService _interactionService;
     private readonly IServiceProvider _serviceProvider;
     private readonly IConfiguration _configuration;
+    private readonly BotSettingsService _settingsService;
     private readonly ILogger<DiscordBotService> _logger;
 
     public DiscordBotService(
@@ -21,12 +22,14 @@ public class DiscordBotService : IHostedService
         InteractionService interactionService,
         IServiceProvider serviceProvider,
         IConfiguration configuration,
+        BotSettingsService settingsService,
         ILogger<DiscordBotService> logger)
     {
         _client = client;
         _interactionService = interactionService;
         _serviceProvider = serviceProvider;
         _configuration = configuration;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -77,6 +80,9 @@ public class DiscordBotService : IHostedService
     private async Task OnReadyAsync()
     {
         _logger.LogInformation("Connecté en tant que {CurrentUser} !", _client.CurrentUser);
+
+        // Définition de l'activité initiale
+        await _client.SetGameAsync(_settingsService.Settings.BotStatusMessage);
 
         // Découverte et chargement des modules de commandes
         await _interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), _serviceProvider);

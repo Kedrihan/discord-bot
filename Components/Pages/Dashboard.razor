@@ -1,0 +1,138 @@
+@page "/"
+@rendermode InteractiveServer
+@inject DiscordSocketClient DiscordClient
+@inject BotSettingsService SettingsService
+
+<div class="row g-4 mb-4">
+    <!-- Statut de connexion -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card p-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-secondary small text-uppercase fw-semibold">Statut</span>
+                <i class="bi bi-broadcast fs-4 text-primary"></i>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @if (DiscordClient.ConnectionState == ConnectionState.Connected)
+                {
+                    <span class="badge badge-online px-2 py-1">En ligne</span>
+                }
+                else
+                {
+                    <span class="badge badge-offline px-2 py-1">@DiscordClient.ConnectionState</span>
+                }
+            </div>
+            <div class="small text-secondary mt-2">
+                @(DiscordClient.CurrentUser?.Username ?? "Non connecté")
+            </div>
+        </div>
+    </div>
+
+    <!-- Latence -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card p-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-secondary small text-uppercase fw-semibold">Latence API</span>
+                <i class="bi bi-activity fs-4 text-warning"></i>
+            </div>
+            <h3 class="mb-0 fw-bold">@(DiscordClient.Latency >= 0 ? $"{DiscordClient.Latency} ms" : "—")</h3>
+            <div class="small text-secondary mt-2">Ping WebSocket Discord</div>
+        </div>
+    </div>
+
+    <!-- Serveurs -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card p-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-secondary small text-uppercase fw-semibold">Serveurs</span>
+                <i class="bi bi-hdd-network fs-4 text-info"></i>
+            </div>
+            <h3 class="mb-0 fw-bold">@DiscordClient.Guilds.Count</h3>
+            <div class="small text-secondary mt-2">Guilds connectés</div>
+        </div>
+    </div>
+
+    <!-- Uptime -->
+    <div class="col-md-3 col-sm-6">
+        <div class="card p-3 shadow-sm h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-secondary small text-uppercase fw-semibold">Uptime</span>
+                <i class="bi bi-clock-history fs-4 text-success"></i>
+            </div>
+            <h3 class="mb-0 fw-bold">@FormatUptime(SettingsService.Uptime)</h3>
+            <div class="small text-secondary mt-2">Depuis le démarrage</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Liste des serveurs -->
+    <div class="col-lg-8">
+        <div class="card p-4 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0 fw-bold"><i class="bi bi-server me-2"></i>Serveurs connectés</h5>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshState">
+                    <i class="bi bi-arrow-clockwise"></i> Rafraîchir
+                </button>
+            </div>
+
+            @if (DiscordClient.Guilds.Count == 0)
+            {
+                <div class="text-secondary py-3 text-center">
+                    <em>Aucun serveur connecté pour le moment (ou le bot n'est pas encore authentifié).</em>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Serveur</th>
+                                <th>Membres</th>
+                                <th>ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var guild in DiscordClient.Guilds)
+                            {
+                                <tr>
+                                    <td><strong>@guild.Name</strong></td>
+                                    <td>@guild.MemberCount</td>
+                                    <td><code>@guild.Id</code></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Commandes disponibles -->
+    <div class="col-lg-4">
+        <div class="card p-4 shadow-sm">
+            <h5 class="mb-3 fw-bold"><i class="bi bi-terminal me-2"></i>Commandes Slash</h5>
+            <ul class="list-group list-group-flush bg-transparent">
+                <li class="list-group-item bg-transparent text-light border-secondary">
+                    <code>/ping</code> — Renvoie la latence et l'état du bot
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private void RefreshState()
+    {
+        StateHasChanged();
+    }
+
+    private string FormatUptime(TimeSpan uptime)
+    {
+        if (uptime.TotalDays >= 1)
+            return $"{(int)uptime.TotalDays}j {uptime.Hours}h {uptime.Minutes}m";
+        if (uptime.TotalHours >= 1)
+            return $"{(int)uptime.TotalHours}h {uptime.Minutes}m {uptime.Seconds}s";
+        return $"{uptime.Minutes}m {uptime.Seconds}s";
+    }
+}

@@ -1,15 +1,21 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using DiscordBot.Components;
 using DiscordBot.Services;
 using dotenv.net;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 // Chargement automatique du fichier .env s'il existe
 DotEnv.Load(new DotEnvOptions(ignoreExceptions: true));
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
+
+// Configuration de Blazor Server
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+// Service de paramètres et d'état du bot
+builder.Services.AddSingleton<BotSettingsService>();
 
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig
@@ -31,9 +37,21 @@ builder.Services.AddSingleton(provider => new InteractionService(
     }
 ));
 
-// Enregistrement du service d'arrière-plan du bot
+// Enregistrement du service d'arrière-plan du bot Discord
 builder.Services.AddHostedService<DiscordBotService>();
 
 var app = builder.Build();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+
+app.UseStaticFiles();
+app.UseAntiforgery();
+
+app.MapRazorComponents<App>()
+    .AddInteractiveServerRenderMode();
 
 await app.RunAsync();

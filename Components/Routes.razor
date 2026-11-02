@@ -1,0 +1,15 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(MainLayout)">
+            <div class="container py-5 text-center">
+                <h2>Page introuvable</h2>
+                <p>La page demandée n'existe pas.</p>
+                <a href="/" class="btn btn-discord">Retour au Dashboard</a>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

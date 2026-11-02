@@ -1,0 +1,22 @@
+@inherits LayoutComponentBase
+
+<nav class="navbar navbar-expand-lg navbar-dark px-3 mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/">
+            <i class="bi bi-discord text-primary fs-3"></i>
+            <span>DiscordBot Admin</span>
+        </a>
+        <div class="navbar-nav ms-auto flex-row gap-3">
+            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                <i class="bi bi-speedometer2 me-1"></i> Dashboard
+            </NavLink>
+            <NavLink class="nav-link" href="/settings">
+                <i class="bi bi-gear me-1"></i> Paramètres
+            </NavLink>
+        </div>
+    </div>
+</nav>
+
+<main class="container">
+    @Body
+</main>

@@ -1,0 +1,80 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject BotSettingsService SettingsService
+@inject DiscordSocketClient DiscordClient
+
+<div class="card p-4 shadow-sm mx-auto" style="max-width: 800px;">
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <i class="bi bi-gear-fill fs-3 text-primary"></i>
+        <h4 class="mb-0 fw-bold">Paramètres du Bot</h4>
+    </div>
+
+    @if (savedNotification)
+    {
+        <div class="alert alert-success d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Paramètres enregistrés avec succès !</span>
+        </div>
+    }
+
+    <EditForm Model="currentSettings" OnValidSubmit="SaveSettings">
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Statut d'activité du Bot</label>
+            <InputText class="form-control bg-dark text-light border-secondary" @bind-Value="currentSettings.BotStatusMessage" />
+            <div class="form-text text-secondary">Texte affiché sous le nom du bot sur Discord ("Joue à...").</div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-semibold">Préfixe par défaut (commandes texte)</label>
+            <InputText class="form-control bg-dark text-light border-secondary" @bind-Value="currentSettings.DefaultPrefix" />
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <InputCheckbox class="form-check-input" id="welcomeSwitch" @bind-Value="currentSettings.EnableWelcomeMessages" />
+            <label class="form-check-label fw-semibold" for="welcomeSwitch">Activer les messages de bienvenue</label>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label fw-semibold">Salon de bienvenue</label>
+            <InputText class="form-control bg-dark text-light border-secondary" @bind-Value="currentSettings.WelcomeChannel" />
+        </div>
+
+        <button type="submit" class="btn btn-discord px-4 py-2">
+            <i class="bi bi-save me-1"></i> Enregistrer les paramètres
+        </button>
+    </EditForm>
+</div>
+
+@code {
+    private BotSettings currentSettings = new();
+    private bool savedNotification = false;
+
+    protected override void OnInitialized()
+    {
+        currentSettings = new BotSettings
+        {
+            BotStatusMessage = SettingsService.Settings.BotStatusMessage,
+            DefaultPrefix = SettingsService.Settings.DefaultPrefix,
+            EnableWelcomeMessages = SettingsService.Settings.EnableWelcomeMessages,
+            WelcomeChannel = SettingsService.Settings.WelcomeChannel
+        };
+    }
+
+    private async Task SaveSettings()
+    {
+        SettingsService.UpdateSettings(currentSettings);
+        
+        // Mise à jour immédiate de l'activité du bot sur Discord
+        if (DiscordClient.ConnectionState == ConnectionState.Connected)
+        {
+            await DiscordClient.SetGameAsync(currentSettings.BotStatusMessage);
+        }
+
+        savedNotification = true;
+        StateHasChanged();
+
+        await Task.Delay(3000);
+        savedNotification = false;
+        StateHasChanged();
+    }
+}
