@@ -10,6 +10,7 @@
     <PackageReference Include="Discord.Net" Version="3.20.2" />
     <PackageReference Include="dotenv.net" Version="4.2.0" />
     <PackageReference Include="Google.GenAI" Version="1.28.0" />
+    <PackageReference Include="System.IO.Abstractions" Version="22.3.0" />
   </ItemGroup>
 
 </Project>

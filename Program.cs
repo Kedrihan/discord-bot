@@ -116,6 +116,10 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
+// Abstractions d'infrastructure (Temps et Système de fichiers)
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<System.IO.Abstractions.IFileSystem, System.IO.Abstractions.FileSystem>();
+
 // Service d'état global du bot
 builder.Services.AddSingleton<BotSettingsService>();
 
