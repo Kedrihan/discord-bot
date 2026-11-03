@@ -1,17 +1,16 @@
 using DiscordBot.Models;
 using DiscordBot.Services;
 using FluentAssertions;
-using Xunit;
 
 namespace DiscordBot.Tests;
 
+[TestFixture]
 public class MorningBriefingLogicTests
 {
-    [Theory]
-    [InlineData(0, "Ciel dégagé", "☀️")]
-    [InlineData(2, "Éclaircies", "⛅")]
-    [InlineData(61, "Pluie faible", "🌧️")]
-    [InlineData(95, "Orage", "⛈️")]
+    [TestCase(0, "Ciel dégagé", "☀️")]
+    [TestCase(2, "Éclaircies", "⛅")]
+    [TestCase(61, "Pluie faible", "🌧️")]
+    [TestCase(95, "Orage", "⛈️")]
     public void GetWeatherDescription_ShouldMapWmoCodesAccurately(int code, string expectedDescription, string expectedEmoji)
     {
         // Act
@@ -22,7 +21,7 @@ public class MorningBriefingLogicTests
         result.Emoji.Should().Be(expectedEmoji);
     }
 
-    [Fact]
+    [Test]
     public void BuildLocalAnalysis_ShouldRecommendBike_WhenWeatherIsDryAndCalm()
     {
         // Arrange
@@ -60,7 +59,7 @@ public class MorningBriefingLogicTests
         result.VerdictBanner.Should().Contain("Conditions idéales");
     }
 
-    [Fact]
+    [Test]
     public void BuildLocalAnalysis_ShouldAdviseCaution_WhenModerateRainOrGusts()
     {
         // Arrange
@@ -98,7 +97,7 @@ public class MorningBriefingLogicTests
         result.VerdictBanner.Should().Contain("prudence");
     }
 
-    [Fact]
+    [Test]
     public void BuildLocalAnalysis_ShouldDiscourageBike_WhenHeavyRainOrDangerousGusts()
     {
         // Arrange

@@ -3,18 +3,25 @@ using DiscordBot.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
-using Xunit;
 
 namespace DiscordBot.Tests;
 
+[TestFixture]
 public class SentArticlesHistoryServiceTests
 {
-    private readonly MockFileSystem _fileSystem = new();
-    private readonly FakeTimeProvider _timeProvider = new(new DateTimeOffset(2026, 11, 4, 10, 0, 0, TimeSpan.Zero));
+    private MockFileSystem _fileSystem = null!;
+    private FakeTimeProvider _timeProvider = null!;
     private readonly NullLogger<SentArticlesHistoryService> _logger = NullLogger<SentArticlesHistoryService>.Instance;
 
-    [Fact]
-    public async Task IsAlreadySent_ShouldReturnFalse_WhenUrlWasNotMarked()
+    [SetUp]
+    public void SetUp()
+    {
+        _fileSystem = new MockFileSystem();
+        _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 4, 10, 0, 0, TimeSpan.Zero));
+    }
+
+    [Test]
+    public void IsAlreadySent_ShouldReturnFalse_WhenUrlWasNotMarked()
     {
         // Arrange
         var service = new SentArticlesHistoryService(_fileSystem, _timeProvider, _logger);
@@ -26,7 +33,7 @@ public class SentArticlesHistoryServiceTests
         result.Should().BeFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task MarkAsSentAsync_ShouldStoreUrlAndNormalize()
     {
         // Arrange
@@ -40,7 +47,7 @@ public class SentArticlesHistoryServiceTests
         service.IsAlreadySent("https://dev.to/my-article/").Should().BeTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task MarkAsSentAsync_ShouldPurgeArticlesOlderThan30Days()
     {
         // Arrange

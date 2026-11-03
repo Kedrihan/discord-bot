@@ -90,9 +90,10 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 
 ---
 
-### 9. Tests Unitaires
+### 9. Tests Unitaires (NUnit obligatoire)
+* Utiliser **NUnit** comme framework de tests unitaires (avec `FluentAssertions`).
 * Rédiger des **tests unitaires** dès qu'une logique métier non triviale est introduite :
   * Calculs de prévisions et créneaux horaires.
   * Logique de déduplication et historiques.
   * Parsing et manipulation de données.
-* Les abstractions `TimeProvider` et `IFileSystem` doivent être mockées pour garantir des tests déterministes, rapides et sans effets de bord.
+* Les abstractions `TimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`) et `IFileSystem` (`TestableIO.System.IO.Abstractions.TestingHelpers`) doivent être mockées pour garantir des tests déterministes, rapides et sans effets de bord.

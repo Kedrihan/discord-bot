@@ -1,12 +1,12 @@
 using DiscordBot.Services;
 using FluentAssertions;
-using Xunit;
 
 namespace DiscordBot.Tests;
 
+[TestFixture]
 public class TechWatchServiceTests
 {
-    [Fact]
+    [Test]
     public void ExtractUrls_ShouldExtractAllBracketedUrls()
     {
         // Arrange
@@ -28,7 +28,7 @@ public class TechWatchServiceTests
         urls.Should().Contain("https://dev.to/csharp-guide");
     }
 
-    [Fact]
+    [Test]
     public void ExtractUrls_ShouldReturnEmpty_WhenNoUrlsInMessage()
     {
         // Arrange
