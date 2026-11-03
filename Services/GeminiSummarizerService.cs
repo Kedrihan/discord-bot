@@ -1,18 +1,17 @@
 using System.Text;
-using System.Text.Json;
 using DiscordBot.Models;
+using Google.GenAI;
+using Google.GenAI.Types;
 using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
 public class GeminiSummarizerService
 {
-    private readonly HttpClient _httpClient;
     private readonly ILogger<GeminiSummarizerService> _logger;
 
-    public GeminiSummarizerService(HttpClient httpClient, ILogger<GeminiSummarizerService> logger)
+    public GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
     {
-        _httpClient = httpClient;
         _logger = logger;
     }
 
@@ -23,7 +22,7 @@ public class GeminiSummarizerService
             return "Aucun nouvel article trouvé pour les sujets sélectionnés cette semaine.";
         }
 
-        // Si la clé Gemini est configurée, on utilise l'IA
+        // Si la clé Gemini est configurée, on utilise l'IA via le SDK officiel Google.GenAI
         if (!string.IsNullOrWhiteSpace(settings.GeminiApiKey))
         {
             try
@@ -36,11 +35,11 @@ public class GeminiSummarizerService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur lors de l'appel à l'API Gemini. Utilisation du formattage de secours.");
+                _logger.LogError(ex, "Erreur lors de l'appel au SDK Google Gen AI. Utilisation du formatage de secours.");
             }
         }
 
-        // Formattage direct de secours (sans IA ou en cas d'erreur API)
+        // Formatage direct de secours (sans IA ou en cas d'erreur API)
         return FormatDirectFallback(articles, settings.MaxArticles);
     }
 
@@ -70,52 +69,26 @@ Consignes :
 4. AUCUNE phrase d'introduction, AUCUNE conclusion, AUCUNE catégorie, AUCUN blabla. Uniquement la liste des bullet points.
 """;
 
-        var requestBody = new
+        var client = new Client(apiKey: settings.GeminiApiKey);
+
+        GenerateContentResponse? response = null;
+        try
         {
-            contents = new[]
-            {
-                new
-                {
-                    parts = new[]
-                    {
-                        new { text = prompt }
-                    }
-                }
-            }
-        };
-
-        var json = JsonSerializer.Serialize(requestBody);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GeminiApiKey}";
-        var response = await _httpClient.PostAsync(url, content);
-
-        // Si le modèle configuré échoue (ex: 404 déprécié ou 503 temporaire), repli automatique sur gemini-flash-latest
-        if (!response.IsSuccessStatusCode && model != "gemini-flash-latest")
+            response = await client.Models.GenerateContentAsync(
+                model: model,
+                contents: prompt
+            );
+        }
+        catch (Exception ex) when (model != "gemini-flash-latest")
         {
-            _logger.LogWarning("Le modèle {Model} a échoué ({Status}). Repli automatique sur gemini-flash-latest...", model, response.StatusCode);
-            url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={settings.GeminiApiKey}";
-            content = new StringContent(json, Encoding.UTF8, "application/json");
-            response = await _httpClient.PostAsync(url, content);
+            _logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli automatique avec le SDK sur gemini-flash-latest...", model);
+            response = await client.Models.GenerateContentAsync(
+                model: "gemini-flash-latest",
+                contents: prompt
+            );
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var err = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Gemini API a retourné le code {Status}: {Error}", response.StatusCode, err);
-            return string.Empty;
-        }
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-
-        var text = doc.RootElement
-            .GetProperty("candidates")[0]
-            .GetProperty("content")
-            .GetProperty("parts")[0]
-            .GetProperty("text")
-            .GetString();
-
+        var text = response?.Text;
         if (string.IsNullOrWhiteSpace(text))
         {
             return string.Empty;

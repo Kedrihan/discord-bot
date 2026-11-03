@@ -3,6 +3,8 @@ using System.Text.Json;
 using Discord;
 using Discord.WebSocket;
 using DiscordBot.Models;
+using Google.GenAI;
+using Google.GenAI.Types;
 using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
@@ -150,76 +152,63 @@ Consignes strictes :
 }
 """;
 
-                var requestBody = new
+                var client = new Client(apiKey: apiKey);
+                var config = new GenerateContentConfig
                 {
-                    contents = new[]
-                    {
-                        new { parts = new[] { new { text = prompt } } }
-                    }
+                    ResponseMimeType = "application/json"
                 };
 
-                var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
-                var content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.PostAsync(url, content);
-                if (response.IsSuccessStatusCode)
+                GenerateContentResponse? response = null;
+                try
                 {
-                    var responseJson = await response.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(responseJson);
-                    var text = doc.RootElement
-                        .GetProperty("candidates")[0]
-                        .GetProperty("content")
-                        .GetProperty("parts")[0]
-                        .GetProperty("text")
-                        .GetString();
+                    response = await client.Models.GenerateContentAsync(
+                        model: model,
+                        contents: prompt,
+                        config: config
+                    );
+                }
+                catch (Exception ex) when (model != "gemini-flash-latest")
+                {
+                    _logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli avec le SDK Google Gen AI sur gemini-flash-latest...", model);
+                    response = await client.Models.GenerateContentAsync(
+                        model: "gemini-flash-latest",
+                        contents: prompt,
+                        config: config
+                    );
+                }
 
-                    if (!string.IsNullOrWhiteSpace(text))
+                var text = response?.Text;
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    using var parsedJson = JsonDocument.Parse(text);
+                    var root = parsedJson.RootElement;
+
+                    var verdictStr = root.TryGetProperty("verdict", out var v) ? v.GetString() : "OK";
+                    var banner = root.TryGetProperty("verdictBanner", out var b) ? b.GetString() : "Météo du jour";
+                    var aSummary = root.TryGetProperty("allerSummary", out var a) ? a.GetString() : "";
+                    var rSummary = root.TryGetProperty("retourSummary", out var r) ? r.GetString() : "";
+                    var adv = root.TryGetProperty("advice", out var ad) ? ad.GetString() : "";
+
+                    var verdict = verdictStr?.ToUpperInvariant() switch
                     {
-                        var cleanedJson = text.Trim();
-                        if (cleanedJson.StartsWith("```json"))
-                        {
-                            cleanedJson = cleanedJson.Substring(7);
-                        }
-                        if (cleanedJson.StartsWith("```"))
-                        {
-                            cleanedJson = cleanedJson.Substring(3);
-                        }
-                        if (cleanedJson.EndsWith("```"))
-                        {
-                            cleanedJson = cleanedJson.Substring(0, cleanedJson.Length - 3);
-                        }
-                        cleanedJson = cleanedJson.Trim();
+                        "DECONSEILLE" => BikeVerdict.Deconseille,
+                        "PRUDENCE" => BikeVerdict.Prudence,
+                        _ => BikeVerdict.Ok
+                    };
 
-                        using var parsedJson = JsonDocument.Parse(cleanedJson);
-                        var root = parsedJson.RootElement;
-
-                        var verdictStr = root.TryGetProperty("verdict", out var v) ? v.GetString() : "OK";
-                        var banner = root.TryGetProperty("verdictBanner", out var b) ? b.GetString() : "Météo du jour";
-                        var aSummary = root.TryGetProperty("allerSummary", out var a) ? a.GetString() : "";
-                        var rSummary = root.TryGetProperty("retourSummary", out var r) ? r.GetString() : "";
-                        var adv = root.TryGetProperty("advice", out var ad) ? ad.GetString() : "";
-
-                        var verdict = verdictStr?.ToUpperInvariant() switch
-                        {
-                            "DECONSEILLE" => BikeVerdict.Deconseille,
-                            "PRUDENCE" => BikeVerdict.Prudence,
-                            _ => BikeVerdict.Ok
-                        };
-
-                        return new MorningBriefingResult
-                        {
-                            Verdict = verdict,
-                            VerdictBanner = banner ?? "Météo du jour",
-                            AllerSummary = aSummary ?? string.Empty,
-                            RetourSummary = rSummary ?? string.Empty,
-                            Advice = adv ?? string.Empty
-                        };
-                    }
+                    return new MorningBriefingResult
+                    {
+                        Verdict = verdict,
+                        VerdictBanner = banner ?? "Météo du jour",
+                        AllerSummary = aSummary ?? string.Empty,
+                        RetourSummary = rSummary ?? string.Empty,
+                        Advice = adv ?? string.Empty
+                    };
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Gemini a échoué pour le briefing. Utilisation de l'analyse locale.");
+                _logger.LogWarning(ex, "Le SDK Google Gen AI a échoué pour le briefing. Utilisation de l'analyse locale.");
             }
         }
 
