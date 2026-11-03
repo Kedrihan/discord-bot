@@ -127,6 +127,12 @@ builder.Services.AddSingleton<GeminiSummarizerService>();
 builder.Services.AddSingleton<TechWatchService>();
 builder.Services.AddHostedService<TechWatchScheduler>();
 
+// Services dédiés au Morning Briefing Météo / Vélo
+builder.Services.AddSingleton<MorningBriefingConfigService>();
+builder.Services.AddSingleton<OpenMeteoService>();
+builder.Services.AddSingleton<MorningBriefingService>();
+builder.Services.AddHostedService<MorningBriefingScheduler>();
+
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig
 {

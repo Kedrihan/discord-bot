@@ -1,0 +1,263 @@
+@page "/briefing"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@rendermode InteractiveServer
+@inject MorningBriefingConfigService ConfigService
+@inject MorningBriefingService BriefingService
+
+<div class="container py-2" style="max-width: 900px;">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1"><i class="bi bi-bicycle text-success me-2"></i>Morning Briefing Vélo & Météo</h3>
+            <p class="text-secondary mb-0">Analyse météo heure par heure des trajets et verdict vélo envoyé sur Discord sous forme d'Embed dynamique.</p>
+        </div>
+        <div class="form-check form-switch fs-4">
+            <input class="form-check-input" type="checkbox" id="enableSwitch" @bind="settings.IsEnabled">
+        </div>
+    </div>
+
+    <!-- Alertes de feedback -->
+    @if (!string.IsNullOrEmpty(feedbackMessage))
+    {
+        <div class="alert @(isSuccessFeedback ? "alert-success" : "alert-danger") alert-dismissible fade show d-flex align-items-center gap-2" role="alert">
+            <i class="bi @(isSuccessFeedback ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") fs-5"></i>
+            <div>@feedbackMessage</div>
+            <button type="button" class="btn-close" @onclick="() => feedbackMessage = null"></button>
+        </div>
+    }
+
+    <!-- Aperçu de l'Embed envoyé lors du test -->
+    @if (testEmbedPreview != null)
+    {
+        <div class="card p-3 mb-4" style="border-left: 6px solid @GetHexColor(testEmbedPreview.Color); background-color: #2b2d31;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-secondary text-uppercase small">Aperçu du message envoyé sur Discord</span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => testEmbedPreview = null">Fermer</button>
+            </div>
+            <h5 class="fw-bold mb-2">@testEmbedPreview.Title</h5>
+            <div class="mb-3 text-light">@((MarkupString)testEmbedPreview.Description.Replace("\n", "<br/>"))</div>
+            
+            <div class="row g-2">
+                @foreach (var field in testEmbedPreview.Fields)
+                {
+                    <div class="col-12 bg-dark p-2 rounded mb-2">
+                        <strong class="text-secondary small d-block">@field.Name</strong>
+                        <span>@field.Value</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="row g-4">
+        <!-- 1. Planification & Cible -->
+        <div class="col-md-6">
+            <div class="card p-4 h-100 shadow-sm">
+                <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-warning"></i>Planification & Destinataire</h5>
+                
+                <!-- Heure d'envoi -->
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Heure d'envoi le matin</label>
+                    <input type="time" class="form-control bg-dark text-light border-secondary" @bind="settings.ScheduleTime" />
+                </div>
+
+                <!-- Jours de la semaine -->
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary d-block">Jours d'envoi</label>
+                    <div class="btn-group flex-wrap gap-1" role="group">
+                        @foreach (var day in Enum.GetValues<DayOfWeek>())
+                        {
+                            var isSelected = settings.ScheduleDays.Contains(day);
+                            <button type="button" 
+                                    class="btn btn-sm @(isSelected ? "btn-success" : "btn-outline-secondary")"
+                                    @onclick="() => ToggleDay(day)">
+                                @GetDayLabel(day)
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <hr class="border-secondary my-3" />
+
+                <!-- Type de destinataire -->
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary d-block">Destination Discord</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="destType" id="destDm" 
+                               checked="@(settings.DestinationType == DestinationType.UserDm)"
+                               @onchange="() => settings.DestinationType = DestinationType.UserDm">
+                        <label class="form-check-label" for="destDm">Message Privé (MP)</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="destType" id="destChan" 
+                               checked="@(settings.DestinationType == DestinationType.Channel)"
+                               @onchange="() => settings.DestinationType = DestinationType.Channel">
+                        <label class="form-check-label" for="destChan">Salon de serveur</label>
+                    </div>
+                </div>
+
+                <!-- ID Discord cible -->
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold text-secondary">
+                        @(settings.DestinationType == DestinationType.UserDm ? "Identifiant Utilisateur (User ID)" : "Identifiant Salon (Channel ID)")
+                    </label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary font-monospace" @bind="settings.TargetId" />
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Localisation & Trajets -->
+        <div class="col-md-6">
+            <div class="card p-4 h-100 shadow-sm">
+                <h5 class="fw-bold mb-3"><i class="bi bi-geo-alt me-2 text-danger"></i>Domicile & Créneaux Trajets</h5>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Adresse du domicile</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary" @bind="settings.Address" />
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-secondary">Latitude</label>
+                        <input type="number" step="0.0001" class="form-control bg-dark text-light border-secondary" @bind="settings.Latitude" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-secondary">Longitude</label>
+                        <input type="number" step="0.0001" class="form-control bg-dark text-light border-secondary" @bind="settings.Longitude" />
+                    </div>
+                </div>
+
+                <hr class="border-secondary my-3" />
+
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-secondary">Aller : Début / Fin</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" min="0" max="23" class="form-control bg-dark text-light border-secondary" @bind="settings.MorningStartHour" />
+                            <span class="input-group-text bg-dark text-secondary border-secondary">h -</span>
+                            <input type="number" min="0" max="23" class="form-control bg-dark text-light border-secondary" @bind="settings.MorningEndHour" />
+                            <span class="input-group-text bg-dark text-secondary border-secondary">h</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-semibold text-secondary">Retour : Début / Fin</label>
+                        <div class="input-group input-group-sm">
+                            <input type="number" min="0" max="23" class="form-control bg-dark text-light border-secondary" @bind="settings.EveningStartHour" />
+                            <span class="input-group-text bg-dark text-secondary border-secondary">h -</span>
+                            <input type="number" min="0" max="23" class="form-control bg-dark text-light border-secondary" @bind="settings.EveningEndHour" />
+                            <span class="input-group-text bg-dark text-secondary border-secondary">h</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions finales -->
+    <div class="d-flex justify-content-between align-items-center mt-4 pt-2">
+        <button class="btn btn-outline-info px-4 py-2" @onclick="TestBriefingAsync" disabled="@isTesting">
+            @if (isTesting)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                <span>Analyse météo en cours...</span>
+            }
+            else
+            {
+                <i class="bi bi-send me-1"></i>
+                <span>Tester le briefing maintenant</span>
+            }
+        </button>
+
+        <button class="btn btn-success px-5 py-2 fw-semibold" @onclick="SaveSettingsAsync">
+            <i class="bi bi-save me-1"></i> Enregistrer les paramètres
+        </button>
+    </div>
+</div>
+
+@code {
+    private MorningBriefingSettings settings = new();
+    private bool isTesting = false;
+    private string? feedbackMessage;
+    private bool isSuccessFeedback = true;
+    private Embed? testEmbedPreview;
+
+    protected override void OnInitialized()
+    {
+        settings = ConfigService.GetSettings();
+    }
+
+    private void ToggleDay(DayOfWeek day)
+    {
+        if (settings.ScheduleDays.Contains(day))
+        {
+            if (settings.ScheduleDays.Count > 1)
+            {
+                settings.ScheduleDays.Remove(day);
+            }
+        }
+        else
+        {
+            settings.ScheduleDays.Add(day);
+        }
+    }
+
+    private string GetDayLabel(DayOfWeek day) => day switch
+    {
+        DayOfWeek.Monday => "Lun",
+        DayOfWeek.Tuesday => "Mar",
+        DayOfWeek.Wednesday => "Mer",
+        DayOfWeek.Thursday => "Jeu",
+        DayOfWeek.Friday => "Ven",
+        DayOfWeek.Saturday => "Sam",
+        DayOfWeek.Sunday => "Dim",
+        _ => day.ToString()
+    };
+
+    private string GetHexColor(Discord.Color? color)
+    {
+        if (!color.HasValue) return "#2ecc71";
+        return $"#{color.Value.R:X2}{color.Value.G:X2}{color.Value.B:X2}";
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        await ConfigService.SaveSettingsAsync(settings);
+        isSuccessFeedback = true;
+        feedbackMessage = "Paramètres du Morning Briefing enregistrés avec succès !";
+    }
+
+    private async Task TestBriefingAsync()
+    {
+        isTesting = true;
+        feedbackMessage = null;
+        testEmbedPreview = null;
+        StateHasChanged();
+
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+
+            var (success, resultMessage, embed) = await BriefingService.ExecuteBriefingAsync(isManualTest: true);
+            isSuccessFeedback = success;
+            if (success)
+            {
+                feedbackMessage = "Briefing envoyé avec succès sur Discord ! Regardez vos messages.";
+                testEmbedPreview = embed;
+            }
+            else
+            {
+                feedbackMessage = $"Échec de l'envoi : {resultMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Une erreur est survenue lors du test : {ex.Message}";
+        }
+        finally
+        {
+            isTesting = false;
+            StateHasChanged();
+        }
+    }
+}
