@@ -237,16 +237,16 @@
         {
             await ConfigService.SaveSettingsAsync(settings);
 
-            var (success, resultMessage, embed) = await BriefingService.ExecuteBriefingAsync(isManualTest: true);
-            isSuccessFeedback = success;
-            if (success)
+            var result = await BriefingService.ExecuteBriefingAsync(isManualTest: true);
+            isSuccessFeedback = result.Success;
+            if (result.Success)
             {
                 feedbackMessage = "Briefing envoyé avec succès sur Discord ! Regardez vos messages.";
-                testEmbedPreview = embed;
+                testEmbedPreview = result.Embed;
             }
             else
             {
-                feedbackMessage = $"Échec de l'envoi : {resultMessage}";
+                feedbackMessage = $"Échec de l'envoi : {result.Message}";
             }
         }
         catch (Exception ex)

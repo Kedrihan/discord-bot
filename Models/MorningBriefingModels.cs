@@ -1,3 +1,5 @@
+using Discord;
+
 namespace DiscordBot.Models;
 
 public enum BikeVerdict
@@ -39,13 +41,13 @@ public class MorningBriefingSettings
     public bool IsEnabled { get; set; } = true;
 
     // Planification
-    public List<DayOfWeek> ScheduleDays { get; set; } = new() 
-    { 
-        DayOfWeek.Monday, 
-        DayOfWeek.Tuesday, 
-        DayOfWeek.Wednesday 
-    };
-    public TimeOnly ScheduleTime { get; set; } = new TimeOnly(7, 0);
+    public List<DayOfWeek> ScheduleDays { get; set; } =
+    [
+        DayOfWeek.Monday,
+        DayOfWeek.Tuesday,
+        DayOfWeek.Wednesday
+    ];
+    public TimeOnly ScheduleTime { get; set; } = new(7, 0);
 
     // Destinataire
     public DestinationType DestinationType { get; set; } = DestinationType.UserDm;
@@ -71,3 +73,9 @@ public class MorningBriefingResult
     public string RetourSummary { get; set; } = string.Empty;
     public string Advice { get; set; } = string.Empty;
 }
+
+public record DailyCommuteWeather(CommuteSlotSummary Aller, CommuteSlotSummary Retour);
+
+public record WeatherCondition(string Description, string Emoji);
+
+public record BriefingExecutionResult(bool Success, string Message, Embed? Embed = null);

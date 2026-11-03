@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Discord;
 using Discord.WebSocket;
@@ -9,130 +8,110 @@ using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
-public class MorningBriefingService
+public class MorningBriefingService(
+    DiscordSocketClient discordClient,
+    MorningBriefingConfigService configService,
+    TechWatchConfigService techWatchConfigService,
+    OpenMeteoService weatherService,
+    ILogger<MorningBriefingService> logger)
 {
-    private readonly DiscordSocketClient _discordClient;
-    private readonly MorningBriefingConfigService _configService;
-    private readonly TechWatchConfigService _techWatchConfigService;
-    private readonly OpenMeteoService _weatherService;
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<MorningBriefingService> _logger;
+    private record VerdictVisual(Color Color, string Icon);
 
-    public MorningBriefingService(
-        DiscordSocketClient discordClient,
-        MorningBriefingConfigService configService,
-        TechWatchConfigService techWatchConfigService,
-        OpenMeteoService weatherService,
-        HttpClient httpClient,
-        ILogger<MorningBriefingService> logger)
+    public async Task<BriefingExecutionResult> GenerateBriefingEmbedAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
     {
-        _discordClient = discordClient;
-        _configService = configService;
-        _techWatchConfigService = techWatchConfigService;
-        _weatherService = weatherService;
-        _httpClient = httpClient;
-        _logger = logger;
-    }
-
-    public async Task<(bool Success, string Message, Embed? Embed)> GenerateBriefingEmbedAsync(bool isManualTest = false)
-    {
-        var settings = _configService.GetSettings();
-        var commute = await _weatherService.GetCommuteWeatherAsync(settings);
+        var settings = configService.GetSettings();
+        var commute = await weatherService.GetCommuteWeatherAsync(settings, cancellationToken);
         if (commute == null)
         {
-            return (false, "Impossible de récupérer les prévisions météo Open-Meteo.", null);
+            return new BriefingExecutionResult(false, "Impossible de récupérer les prévisions météo Open-Meteo.");
         }
 
-        var briefingResult = await AnalyzeWithGeminiAsync(commute.Value.Aller, commute.Value.Retour, settings);
-        var embed = BuildDiscordEmbed(briefingResult, commute.Value.Aller, commute.Value.Retour, settings, isManualTest);
-        return (true, "Briefing généré avec succès.", embed);
+        var briefingResult = await AnalyzeWithGeminiAsync(commute.Aller, commute.Retour, settings);
+        var embed = BuildDiscordEmbed(briefingResult, commute.Aller, commute.Retour, settings, isManualTest);
+        return new BriefingExecutionResult(true, "Briefing généré avec succès.", embed);
     }
 
-    public async Task<(bool Success, string Message, Embed? Embed)> ExecuteBriefingAsync(bool isManualTest = false)
+    public async Task<BriefingExecutionResult> ExecuteBriefingAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
     {
-        var settings = _configService.GetSettings();
+        var settings = configService.GetSettings();
         if (!settings.IsEnabled && !isManualTest)
         {
-            return (false, "Le Morning Briefing est désactivé.", null);
+            return new BriefingExecutionResult(false, "Le Morning Briefing est désactivé.");
         }
 
-        if (_discordClient.ConnectionState != ConnectionState.Connected)
+        if (discordClient.ConnectionState != ConnectionState.Connected)
         {
-            return (false, "Le bot Discord n'est pas connecté.", null);
+            return new BriefingExecutionResult(false, "Le bot Discord n'est pas connecté.");
         }
 
         if (!ulong.TryParse(settings.TargetId, out var targetId) || targetId == 0)
         {
-            return (false, "L'identifiant Discord cible est invalide.", null);
+            return new BriefingExecutionResult(false, "L'identifiant Discord cible est invalide.");
         }
 
-        _logger.LogInformation("Génération du Morning Briefing Vélo (Test: {IsTest})...", isManualTest);
+        logger.LogInformation("Génération du Morning Briefing Vélo (Test: {IsTest})...", isManualTest);
 
-        var (success, genMessage, embed) = await GenerateBriefingEmbedAsync(isManualTest);
-        if (!success || embed == null)
+        var genResult = await GenerateBriefingEmbedAsync(isManualTest, cancellationToken);
+        if (!genResult.Success || genResult.Embed == null)
         {
-            return (false, genMessage, null);
+            return genResult;
         }
 
-        // Envoi Discord
         try
         {
             if (settings.DestinationType == DestinationType.UserDm)
             {
-                IUser? user = _discordClient.GetUser(targetId);
-                if (user == null)
-                {
-                    user = await _discordClient.Rest.GetUserAsync(targetId);
-                }
+                IUser? user = discordClient.GetUser(targetId);
+                user ??= await discordClient.Rest.GetUserAsync(targetId);
 
                 if (user == null)
                 {
-                    return (false, $"Utilisateur Discord `{targetId}` introuvable.", null);
+                    return new BriefingExecutionResult(false, $"Utilisateur Discord `{targetId}` introuvable.");
                 }
 
                 var dm = await user.CreateDMChannelAsync();
-                await dm.SendMessageAsync(embed: embed);
+                await dm.SendMessageAsync(embed: genResult.Embed);
             }
             else
             {
-                IMessageChannel? channel = _discordClient.GetChannel(targetId) as IMessageChannel;
-                if (channel == null)
-                {
-                    channel = await _discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
-                }
+                var channel = discordClient.GetChannel(targetId) as IMessageChannel;
+                channel ??= await discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
 
                 if (channel == null)
                 {
-                    return (false, $"Salon Discord `{targetId}` introuvable.", null);
+                    return new BriefingExecutionResult(false, $"Salon Discord `{targetId}` introuvable.");
                 }
 
-                await channel.SendMessageAsync(embed: embed);
+                await channel.SendMessageAsync(embed: genResult.Embed);
             }
 
-            _logger.LogInformation("Morning Briefing envoyé avec succès sur Discord !");
-            return (true, "Briefing envoyé avec succès sur Discord !", embed);
+            logger.LogInformation("Morning Briefing envoyé avec succès sur Discord !");
+            return new BriefingExecutionResult(true, "Briefing envoyé avec succès sur Discord !", genResult.Embed);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erreur lors de l'envoi du Morning Briefing sur Discord");
-            return (false, $"Erreur Discord : {ex.Message}", null);
+            logger.LogError(ex, "Erreur lors de l'envoi du Morning Briefing sur Discord");
+            return new BriefingExecutionResult(false, $"Erreur Discord : {ex.Message}");
         }
     }
 
     private async Task<MorningBriefingResult> AnalyzeWithGeminiAsync(CommuteSlotSummary aller, CommuteSlotSummary retour, MorningBriefingSettings settings)
     {
-        var apiKey = _techWatchConfigService.GetSettings().GeminiApiKey;
-        var model = _techWatchConfigService.GetSettings().GeminiModel;
+        var apiKey = techWatchConfigService.GetSettings().GeminiApiKey;
+        var model = techWatchConfigService.GetSettings().GeminiModel;
         if (string.IsNullOrWhiteSpace(model) || model.StartsWith("gemini-1.") || model == "gemini-2.0-flash")
         {
             model = "gemini-flash-latest";
         }
 
-        if (!string.IsNullOrWhiteSpace(apiKey))
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
-            try
-            {
-                var prompt = $$"""
+            return BuildLocalAnalysis(aller, retour);
+        }
+
+        try
+        {
+            var prompt = $$"""
 Tu es un assistant météo et mobilité vélo pour l'agglomération de Lyon.
 Analyse les prévisions météo pour aujourd'hui pour les trajets vélo de Corentin :
 - Trajet Aller ({{aller.TimeRange}}) : {{aller.MainEmoji}} {{aller.MainCondition}}, Température {{aller.MinTemp:F1}}°C à {{aller.MaxTemp:F1}}°C, Risque pluie {{aller.MaxRainProbability}}%, Cumul pluie {{aller.TotalPrecipitation:F1}}mm, Vent {{aller.MaxWindSpeed:F0}} km/h, Rafales max {{aller.MaxWindGusts:F0}} km/h.
@@ -152,133 +131,135 @@ Consignes strictes :
 }
 """;
 
-                var client = new Client(apiKey: apiKey);
-                var config = new GenerateContentConfig
-                {
-                    ResponseMimeType = "application/json"
-                };
-
-                GenerateContentResponse? response = null;
-                try
-                {
-                    response = await client.Models.GenerateContentAsync(
-                        model: model,
-                        contents: prompt,
-                        config: config
-                    );
-                }
-                catch (Exception ex) when (model != "gemini-flash-latest")
-                {
-                    _logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli avec le SDK Google Gen AI sur gemini-flash-latest...", model);
-                    response = await client.Models.GenerateContentAsync(
-                        model: "gemini-flash-latest",
-                        contents: prompt,
-                        config: config
-                    );
-                }
-
-                var text = response?.Text;
-                if (!string.IsNullOrWhiteSpace(text))
-                {
-                    using var parsedJson = JsonDocument.Parse(text);
-                    var root = parsedJson.RootElement;
-
-                    var verdictStr = root.TryGetProperty("verdict", out var v) ? v.GetString() : "OK";
-                    var banner = root.TryGetProperty("verdictBanner", out var b) ? b.GetString() : "Météo du jour";
-                    var aSummary = root.TryGetProperty("allerSummary", out var a) ? a.GetString() : "";
-                    var rSummary = root.TryGetProperty("retourSummary", out var r) ? r.GetString() : "";
-                    var adv = root.TryGetProperty("advice", out var ad) ? ad.GetString() : "";
-
-                    var verdict = verdictStr?.ToUpperInvariant() switch
-                    {
-                        "DECONSEILLE" => BikeVerdict.Deconseille,
-                        "PRUDENCE" => BikeVerdict.Prudence,
-                        _ => BikeVerdict.Ok
-                    };
-
-                    return new MorningBriefingResult
-                    {
-                        Verdict = verdict,
-                        VerdictBanner = banner ?? "Météo du jour",
-                        AllerSummary = aSummary ?? string.Empty,
-                        RetourSummary = rSummary ?? string.Empty,
-                        Advice = adv ?? string.Empty
-                    };
-                }
-            }
-            catch (Exception ex)
+            var client = new Client(apiKey: apiKey);
+            var config = new GenerateContentConfig
             {
-                _logger.LogWarning(ex, "Le SDK Google Gen AI a échoué pour le briefing. Utilisation de l'analyse locale.");
-            }
-        }
+                ResponseMimeType = "application/json"
+            };
 
-        // Repli logique sans IA
-        return BuildLocalAnalysis(aller, retour);
+            GenerateContentResponse? response = null;
+            try
+            {
+                response = await client.Models.GenerateContentAsync(
+                    model: model,
+                    contents: prompt,
+                    config: config
+                );
+            }
+            catch (Exception ex) when (model != "gemini-flash-latest")
+            {
+                logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli avec le SDK Google Gen AI sur gemini-flash-latest...", model);
+                response = await client.Models.GenerateContentAsync(
+                    model: "gemini-flash-latest",
+                    contents: prompt,
+                    config: config
+                );
+            }
+
+            var text = response?.Text;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return BuildLocalAnalysis(aller, retour);
+            }
+
+            using var parsedJson = JsonDocument.Parse(text);
+            var root = parsedJson.RootElement;
+
+            var verdictStr = root.TryGetProperty("verdict", out var v) ? v.GetString() : "OK";
+            var banner = root.TryGetProperty("verdictBanner", out var b) ? b.GetString() : "Météo du jour";
+            var aSummary = root.TryGetProperty("allerSummary", out var a) ? a.GetString() : "";
+            var rSummary = root.TryGetProperty("retourSummary", out var r) ? r.GetString() : "";
+            var adv = root.TryGetProperty("advice", out var ad) ? ad.GetString() : "";
+
+            var verdict = verdictStr?.ToUpperInvariant() switch
+            {
+                "DECONSEILLE" => BikeVerdict.Deconseille,
+                "PRUDENCE" => BikeVerdict.Prudence,
+                _ => BikeVerdict.Ok
+            };
+
+            return new MorningBriefingResult
+            {
+                Verdict = verdict,
+                VerdictBanner = banner ?? "Météo du jour",
+                AllerSummary = aSummary ?? string.Empty,
+                RetourSummary = rSummary ?? string.Empty,
+                Advice = adv ?? string.Empty
+            };
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Le SDK Google Gen AI a échoué pour le briefing. Utilisation de l'analyse locale.");
+            return BuildLocalAnalysis(aller, retour);
+        }
     }
 
-    private MorningBriefingResult BuildLocalAnalysis(CommuteSlotSummary aller, CommuteSlotSummary retour)
+    public static MorningBriefingResult BuildLocalAnalysis(CommuteSlotSummary aller, CommuteSlotSummary retour)
     {
         var maxPrecip = Math.Max(aller.TotalPrecipitation, retour.TotalPrecipitation);
         var maxGusts = Math.Max(aller.MaxWindGusts, retour.MaxWindGusts);
         var maxRainProb = Math.Max(aller.MaxRainProbability, retour.MaxRainProbability);
 
-        BikeVerdict verdict;
-        string banner;
-        string advice;
-
         if (maxPrecip > 1.5 || maxGusts > 50)
         {
-            verdict = BikeVerdict.Deconseille;
-            banner = "🛑 Vélo déconseillé aujourd'hui : conditions météo difficiles";
-            advice = maxGusts > 50 ? "Fortes rafales de vent dangereuses pour le vélo." : "Pluie soutenue prévue, privilégie les transports.";
+            return new MorningBriefingResult
+            {
+                Verdict = BikeVerdict.Deconseille,
+                VerdictBanner = "🛑 Vélo déconseillé aujourd'hui : conditions météo difficiles",
+                AllerSummary = FormatSlotLine(aller),
+                RetourSummary = FormatSlotLine(retour),
+                Advice = maxGusts > 50 ? "Fortes rafales de vent dangereuses pour le vélo." : "Pluie soutenue prévue, privilégie les transports."
+            };
         }
-        else if (maxPrecip > 0.2 || maxRainProb > 40 || maxGusts > 35)
+
+        if (maxPrecip > 0.2 || maxRainProb > 40 || maxGusts > 35)
         {
-            verdict = BikeVerdict.Prudence;
-            banner = "⚠️ Vélo possible avec prudence : risque d'humidité ou vent";
-            advice = "Prévois un imperméable et méfie-toi des chaussées glissantes.";
-        }
-        else
-        {
-            verdict = BikeVerdict.Ok;
-            banner = "✅ Conditions idéales pour aller au travail à vélo !";
-            advice = aller.MinTemp < 8 ? "Matinée fraîche, pense aux gants légers !" : "Bonne route et belle journée !";
+            return new MorningBriefingResult
+            {
+                Verdict = BikeVerdict.Prudence,
+                VerdictBanner = "⚠️ Vélo possible avec prudence : risque d'humidité ou vent",
+                AllerSummary = FormatSlotLine(aller),
+                RetourSummary = FormatSlotLine(retour),
+                Advice = "Prévois un imperméable et méfie-toi des chaussées glissantes."
+            };
         }
 
         return new MorningBriefingResult
         {
-            Verdict = verdict,
-            VerdictBanner = banner,
-            AllerSummary = $"{aller.MainEmoji} **{aller.MainCondition}** ({aller.MinTemp:F0}°C - {aller.MaxTemp:F0}°C), pluie {aller.MaxRainProbability}%, rafales {aller.MaxWindGusts:F0} km/h.",
-            RetourSummary = $"{retour.MainEmoji} **{retour.MainCondition}** ({retour.MinTemp:F0}°C - {retour.MaxTemp:F0}°C), pluie {retour.MaxRainProbability}%, rafales {retour.MaxWindGusts:F0} km/h.",
-            Advice = advice
+            Verdict = BikeVerdict.Ok,
+            VerdictBanner = "✅ Conditions idéales pour aller au travail à vélo !",
+            AllerSummary = FormatSlotLine(aller),
+            RetourSummary = FormatSlotLine(retour),
+            Advice = aller.MinTemp < 8 ? "Matinée fraîche, pense aux gants légers !" : "Bonne route et belle journée !"
         };
     }
 
-    private Embed BuildDiscordEmbed(MorningBriefingResult result, CommuteSlotSummary aller, CommuteSlotSummary retour, MorningBriefingSettings settings, bool isTest)
+    private static string FormatSlotLine(CommuteSlotSummary slot) =>
+        $"{slot.MainEmoji} **{slot.MainCondition}** ({slot.MinTemp:F0}°C - {slot.MaxTemp:F0}°C), pluie {slot.MaxRainProbability}%, rafales {slot.MaxWindGusts:F0} km/h.";
+
+    private static Embed BuildDiscordEmbed(MorningBriefingResult result, CommuteSlotSummary aller, CommuteSlotSummary retour, MorningBriefingSettings settings, bool isTest)
     {
-        var (color, icon) = result.Verdict switch
+        var visual = result.Verdict switch
         {
-            BikeVerdict.Ok => (new Color(0x2e, 0xcc, 0x71), "🟢"),
-            BikeVerdict.Prudence => (new Color(0xe6, 0x7e, 0x22), "🟠"),
-            BikeVerdict.Deconseille => (new Color(0xe7, 0x4c, 0x3c), "🔴"),
-            _ => (new Color(0x34, 0x98, 0xdb), "🔵")
+            BikeVerdict.Ok => new VerdictVisual(new Color(0x2e, 0xcc, 0x71), "🟢"),
+            BikeVerdict.Prudence => new VerdictVisual(new Color(0xe6, 0x7e, 0x22), "🟠"),
+            BikeVerdict.Deconseille => new VerdictVisual(new Color(0xe7, 0x4c, 0x3c), "🔴"),
+            _ => new VerdictVisual(new Color(0x34, 0x98, 0xdb), "🔵")
         };
 
         var title = isTest
-            ? $"🚴‍♂️ [Test] Trajet Vélo & Météo • Décines-Charpieu"
-            : $"🚴‍♂️ Trajet Vélo & Météo • Décines-Charpieu";
+            ? "🚴‍♂️ [Test] Trajet Vélo & Météo • Décines-Charpieu"
+            : "🚴‍♂️ Trajet Vélo & Météo • Décines-Charpieu";
 
-        var builder = new EmbedBuilder()
+        return new EmbedBuilder()
             .WithTitle(title)
-            .WithDescription($"### {icon} {result.VerdictBanner}\n")
-            .WithColor(color)
+            .WithDescription($"### {visual.Icon} {result.VerdictBanner}\n")
+            .WithColor(visual.Color)
             .AddField($"🌅 Trajet Aller ({aller.TimeRange})", string.IsNullOrWhiteSpace(result.AllerSummary) ? $"{aller.MainEmoji} {aller.MainCondition}" : result.AllerSummary, inline: false)
             .AddField($"🌇 Trajet Retour ({retour.TimeRange})", string.IsNullOrWhiteSpace(result.RetourSummary) ? $"{retour.MainEmoji} {retour.MainCondition}" : result.RetourSummary, inline: false)
             .AddField("💡 Conseil de route", result.Advice, inline: false)
             .WithCurrentTimestamp()
-            .WithFooter(footer => footer.Text = "Open-Meteo • Analysé par Gemini");
-
-        return builder.Build();
+            .WithFooter(footer => footer.Text = "Open-Meteo • Analysé par Gemini")
+            .Build();
     }
 }

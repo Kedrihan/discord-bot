@@ -8,56 +8,38 @@ using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
-public class DiscordBotService : IHostedService
+public class DiscordBotService(
+    DiscordSocketClient client,
+    InteractionService interactionService,
+    IServiceProvider serviceProvider,
+    IConfiguration configuration,
+    ILogger<DiscordBotService> logger) : IHostedService
 {
-    private readonly DiscordSocketClient _client;
-    private readonly InteractionService _interactionService;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IConfiguration _configuration;
-    private readonly BotSettingsService _settingsService;
-    private readonly ILogger<DiscordBotService> _logger;
-
-    public DiscordBotService(
-        DiscordSocketClient client,
-        InteractionService interactionService,
-        IServiceProvider serviceProvider,
-        IConfiguration configuration,
-        BotSettingsService settingsService,
-        ILogger<DiscordBotService> logger)
-    {
-        _client = client;
-        _interactionService = interactionService;
-        _serviceProvider = serviceProvider;
-        _configuration = configuration;
-        _settingsService = settingsService;
-        _logger = logger;
-    }
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _client.Log += OnLogAsync;
-        _interactionService.Log += OnLogAsync;
-        _client.Ready += OnReadyAsync;
-        _client.InteractionCreated += OnInteractionCreatedAsync;
+        client.Log += OnLogAsync;
+        interactionService.Log += OnLogAsync;
+        client.Ready += OnReadyAsync;
+        client.InteractionCreated += OnInteractionCreatedAsync;
 
-        var token = _configuration["DISCORD_TOKEN"] 
-            ?? _configuration["Discord:Token"]
+        var token = configuration["DISCORD_TOKEN"]
+            ?? configuration["Discord:Token"]
             ?? Environment.GetEnvironmentVariable("DISCORD_TOKEN");
 
         if (string.IsNullOrWhiteSpace(token) || token == "votre_token_secret_ici")
         {
-            _logger.LogError("DISCORD_TOKEN est manquant ou non renseigné dans le fichier .env !");
+            logger.LogError("DISCORD_TOKEN est manquant ou non renseigné dans le fichier .env !");
             return;
         }
 
-        await _client.LoginAsync(TokenType.Bot, token);
-        await _client.StartAsync();
+        await client.LoginAsync(TokenType.Bot, token);
+        await client.StartAsync();
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Arrêt du bot Discord en cours...");
-        await _client.StopAsync();
+        logger.LogInformation("Arrêt du bot Discord en cours...");
+        await client.StopAsync();
     }
 
     private Task OnLogAsync(LogMessage log)
@@ -73,53 +55,54 @@ public class DiscordBotService : IHostedService
             _ => LogLevel.Information
         };
 
-        _logger.Log(logLevel, log.Exception, "[Discord] {Message}", log.Message);
+        logger.Log(logLevel, log.Exception, "[Discord] {Message}", log.Message);
         return Task.CompletedTask;
     }
 
     private async Task OnReadyAsync()
     {
-        _logger.LogInformation("Connecté en tant que {CurrentUser} !", _client.CurrentUser);
+        logger.LogInformation("Connecté en tant que {CurrentUser} !", client.CurrentUser);
 
         // Découverte et chargement des modules de commandes
-        await _interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), _serviceProvider);
+        await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
 
         // Enregistrement des commandes Slash
-        var guildIdString = _configuration["DISCORD_GUILD_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
+        var guildIdString = configuration["DISCORD_GUILD_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_GUILD_ID");
 
         if (ulong.TryParse(guildIdString, out var guildId) && guildId > 0)
         {
-            _logger.LogInformation("Enregistrement immédiat des commandes pour le serveur de test {GuildId}...", guildId);
-            await _interactionService.RegisterCommandsToGuildAsync(guildId);
-        }
-        else
-        {
-            _logger.LogInformation("Enregistrement global des commandes (peut prendre jusqu'à 1 heure)...");
-            await _interactionService.RegisterCommandsGloballyAsync();
+            logger.LogInformation("Enregistrement immédiat des commandes pour le serveur de test {GuildId}...", guildId);
+            await interactionService.RegisterCommandsToGuildAsync(guildId);
+            logger.LogInformation("Commandes Slash prêtes !");
+            return;
         }
 
-        _logger.LogInformation("Commandes Slash prêtes !");
+        logger.LogInformation("Enregistrement global des commandes (peut prendre jusqu'à 1 heure)...");
+        await interactionService.RegisterCommandsGloballyAsync();
+        logger.LogInformation("Commandes Slash prêtes !");
     }
 
     private async Task OnInteractionCreatedAsync(SocketInteraction interaction)
     {
         try
         {
-            var context = new SocketInteractionContext(_client, interaction);
-            var result = await _interactionService.ExecuteCommandAsync(context, _serviceProvider);
+            var context = new SocketInteractionContext(client, interaction);
+            var result = await interactionService.ExecuteCommandAsync(context, serviceProvider);
 
-            if (!result.IsSuccess)
+            if (result.IsSuccess)
             {
-                _logger.LogWarning("Erreur lors de l'exécution de la commande : {ErrorReason}", result.ErrorReason);
-                if (interaction.Type == InteractionType.ApplicationCommand)
-                {
-                    await interaction.RespondAsync($"Une erreur est survenue : `{result.ErrorReason}`", ephemeral: true);
-                }
+                return;
+            }
+
+            logger.LogWarning("Erreur lors de l'exécution de la commande : {ErrorReason}", result.ErrorReason);
+            if (interaction.Type == InteractionType.ApplicationCommand)
+            {
+                await interaction.RespondAsync($"Une erreur est survenue : `{result.ErrorReason}`", ephemeral: true);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception non gérée lors d'une interaction");
+            logger.LogError(ex, "Exception non gérée lors d'une interaction");
         }
     }
 }

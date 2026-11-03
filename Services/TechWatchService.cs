@@ -6,61 +6,44 @@ using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
-public class TechWatchService
+public class TechWatchService(
+    DiscordSocketClient discordClient,
+    TechWatchConfigService configService,
+    NewsAggregatorService newsAggregator,
+    GeminiSummarizerService geminiSummarizer,
+    SentArticlesHistoryService historyService,
+    ILogger<TechWatchService> logger)
 {
-    private readonly DiscordSocketClient _discordClient;
-    private readonly TechWatchConfigService _configService;
-    private readonly NewsAggregatorService _newsAggregator;
-    private readonly GeminiSummarizerService _geminiSummarizer;
-    private readonly SentArticlesHistoryService _historyService;
-    private readonly ILogger<TechWatchService> _logger;
-
-    public TechWatchService(
-        DiscordSocketClient discordClient,
-        TechWatchConfigService configService,
-        NewsAggregatorService newsAggregator,
-        GeminiSummarizerService geminiSummarizer,
-        SentArticlesHistoryService historyService,
-        ILogger<TechWatchService> logger)
+    public async Task<TechWatchExecutionResult> ExecuteWatchAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
     {
-        _discordClient = discordClient;
-        _configService = configService;
-        _newsAggregator = newsAggregator;
-        _geminiSummarizer = geminiSummarizer;
-        _historyService = historyService;
-        _logger = logger;
-    }
-
-    public async Task<(bool Success, string Message)> ExecuteWatchAsync(bool isManualTest = false)
-    {
-        var settings = _configService.GetSettings();
+        var settings = configService.GetSettings();
 
         if (!settings.IsEnabled && !isManualTest)
         {
-            return (false, "La veille technologique est désactivée.");
+            return new TechWatchExecutionResult(false, "La veille technologique est désactivée.");
         }
 
-        if (_discordClient.ConnectionState != ConnectionState.Connected)
+        if (discordClient.ConnectionState != ConnectionState.Connected)
         {
-            return (false, "Le bot Discord n'est pas connecté pour le moment.");
+            return new TechWatchExecutionResult(false, "Le bot Discord n'est pas connecté pour le moment.");
         }
 
         if (!ulong.TryParse(settings.TargetId, out var targetId) || targetId == 0)
         {
-            return (false, "L'identifiant Discord de destination (ID Salon ou ID Utilisateur) est invalide.");
+            return new TechWatchExecutionResult(false, "L'identifiant Discord de destination (ID Salon ou ID Utilisateur) est invalide.");
         }
 
-        _logger.LogInformation("Début de l'exécution de la veille technologique (Manuel: {IsTest})...", isManualTest);
+        logger.LogInformation("Début de l'exécution de la veille technologique (Manuel: {IsTest})...", isManualTest);
 
         // 1. Récupération des articles
-        var articles = await _newsAggregator.FetchAllArticlesAsync(settings, filterDuplicates: !isManualTest);
+        var articles = await newsAggregator.FetchAllArticlesAsync(settings, filterDuplicates: !isManualTest, cancellationToken);
         if (articles.Count == 0)
         {
-            return (false, "Aucun article récent n'a été trouvé avec les sources et thématiques actuelles.");
+            return new TechWatchExecutionResult(false, "Aucun article récent n'a été trouvé avec les sources et thématiques actuelles.");
         }
 
         // 2. Synthèse et formatage
-        var formattedArticles = await _geminiSummarizer.SummarizeAndFormatArticlesAsync(articles, settings);
+        var formattedArticles = await geminiSummarizer.SummarizeAndFormatArticlesAsync(articles, settings);
 
         // 3. Construction du message final Discord
         var header = isManualTest ? "🧪 **[Test] Veille Dev Web & IA**" : "🖥️ **Veille Dev Web & IA**";
@@ -71,15 +54,12 @@ public class TechWatchService
         {
             if (settings.DestinationType == DestinationType.UserDm)
             {
-                IUser? user = _discordClient.GetUser(targetId);
-                if (user == null)
-                {
-                    user = await _discordClient.Rest.GetUserAsync(targetId);
-                }
+                IUser? user = discordClient.GetUser(targetId);
+                user ??= await discordClient.Rest.GetUserAsync(targetId);
 
                 if (user == null)
                 {
-                    return (false, $"Impossible de trouver l'utilisateur Discord avec l'ID `{targetId}`. A-t-il un serveur en commun avec le bot ?");
+                    return new TechWatchExecutionResult(false, $"Impossible de trouver l'utilisateur Discord avec l'ID `{targetId}`. A-t-il un serveur en commun avec le bot ?");
                 }
 
                 var dm = await user.CreateDMChannelAsync();
@@ -87,15 +67,12 @@ public class TechWatchService
             }
             else
             {
-                IMessageChannel? channel = _discordClient.GetChannel(targetId) as IMessageChannel;
-                if (channel == null)
-                {
-                    channel = await _discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
-                }
+                var channel = discordClient.GetChannel(targetId) as IMessageChannel;
+                channel ??= await discordClient.Rest.GetChannelAsync(targetId) as IMessageChannel;
 
                 if (channel == null)
                 {
-                    return (false, $"Impossible de trouver le salon Discord avec l'ID `{targetId}`.");
+                    return new TechWatchExecutionResult(false, $"Impossible de trouver le salon Discord avec l'ID `{targetId}`.");
                 }
 
                 await channel.SendMessageAsync(finalMessage);
@@ -107,23 +84,23 @@ public class TechWatchService
                 var extractedUrls = ExtractUrls(formattedArticles);
                 if (extractedUrls.Count > 0)
                 {
-                    await _historyService.MarkAsSentAsync(extractedUrls);
+                    await historyService.MarkAsSentAsync(extractedUrls, cancellationToken);
                 }
             }
 
-            _logger.LogInformation("Veille technologique envoyée avec succès sur Discord !");
-            return (true, finalMessage);
+            logger.LogInformation("Veille technologique envoyée avec succès sur Discord !");
+            return new TechWatchExecutionResult(true, finalMessage);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erreur lors de l'envoi du message sur Discord");
-            return (false, $"Erreur Discord : {ex.Message}");
+            logger.LogError(ex, "Erreur lors de l'envoi du message sur Discord");
+            return new TechWatchExecutionResult(false, $"Erreur Discord : {ex.Message}");
         }
     }
 
-    private List<string> ExtractUrls(string text)
+    public static List<string> ExtractUrls(string text)
     {
-        var urls = new List<string>();
+        List<string> urls = [];
         var matches = Regex.Matches(text, @"<((?:https?:\/\/)[^>]+)>");
         foreach (Match match in matches)
         {

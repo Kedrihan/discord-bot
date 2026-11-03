@@ -2,15 +2,15 @@ namespace DiscordBot.Services;
 
 public class BotSettings
 {
-    // Espace réservé pour vos futurs paramètres
+    // Espace réservé pour de futurs paramètres
 }
 
-public class BotSettingsService
+public class BotSettingsService(TimeProvider timeProvider)
 {
     public BotSettings Settings { get; private set; } = new();
-    public DateTimeOffset StartTime { get; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset StartTime { get; } = timeProvider.GetUtcNow();
 
-    public TimeSpan Uptime => DateTimeOffset.UtcNow - StartTime;
+    public TimeSpan Uptime => timeProvider.GetUtcNow() - StartTime;
 
     public event Action? OnSettingsChanged;
 

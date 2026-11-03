@@ -4,19 +4,12 @@ using DiscordBot.Services;
 
 namespace DiscordBot.Modules;
 
-public class GeneralModule : InteractionModuleBase<SocketInteractionContext>
+public class GeneralModule(MorningBriefingService morningBriefingService) : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly MorningBriefingService _morningBriefingService;
-
-    public GeneralModule(MorningBriefingService morningBriefingService)
-    {
-        _morningBriefingService = morningBriefingService;
-    }
-
     [SlashCommand("ping", "Vérifie si le bot répond et affiche sa latence")]
     public async Task PingAsync()
     {
-        int latency = Context.Client.Latency;
+        var latency = Context.Client.Latency;
 
         var embed = new EmbedBuilder()
             .WithTitle("🏓 Pong !")
@@ -34,14 +27,13 @@ public class GeneralModule : InteractionModuleBase<SocketInteractionContext>
     {
         await DeferAsync();
 
-        var (success, message, embed) = await _morningBriefingService.GenerateBriefingEmbedAsync(isManualTest: false);
-        if (success && embed != null)
+        var result = await morningBriefingService.GenerateBriefingEmbedAsync(isManualTest: false);
+        if (result.Success && result.Embed != null)
         {
-            await FollowupAsync(embed: embed);
+            await FollowupAsync(embed: result.Embed);
+            return;
         }
-        else
-        {
-            await FollowupAsync($"⚠️ Impossible de générer le briefing : {message}");
-        }
+
+        await FollowupAsync($"⚠️ Impossible de générer le briefing : {result.Message}");
     }
 }

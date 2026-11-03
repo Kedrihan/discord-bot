@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -6,31 +7,32 @@ namespace DiscordBot.Services;
 public class SentArticleRecord
 {
     public string Url { get; set; } = string.Empty;
-    public DateTimeOffset SentAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset SentAt { get; set; }
 }
 
-public class SentArticlesHistoryService
+public class SentArticlesHistoryService(
+    IFileSystem fileSystem,
+    TimeProvider timeProvider,
+    ILogger<SentArticlesHistoryService> logger)
 {
-    private readonly string _filePath;
-    private readonly ILogger<SentArticlesHistoryService> _logger;
     private readonly object _lock = new();
-    private List<SentArticleRecord> _records = new();
+    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "sent_articles.json");
+    private List<SentArticleRecord> _records = [];
 
-    public SentArticlesHistoryService(ILogger<SentArticlesHistoryService> logger)
+    public void Initialize()
     {
-        _logger = logger;
-        var dataDir = Path.Combine(AppContext.BaseDirectory, "data");
-        if (!Directory.Exists(dataDir))
+        var dataDir = fileSystem.Path.GetDirectoryName(_filePath);
+        if (!string.IsNullOrEmpty(dataDir) && !fileSystem.Directory.Exists(dataDir))
         {
-            Directory.CreateDirectory(dataDir);
+            fileSystem.Directory.CreateDirectory(dataDir);
         }
 
-        _filePath = Path.Combine(dataDir, "sent_articles.json");
         Load();
     }
 
     public bool IsAlreadySent(string url)
     {
+        EnsureInitialized();
         lock (_lock)
         {
             var normalized = NormalizeUrl(url);
@@ -38,21 +40,25 @@ public class SentArticlesHistoryService
         }
     }
 
-    public async Task MarkAsSentAsync(IEnumerable<string> urls)
+    public async Task MarkAsSentAsync(IEnumerable<string> urls, CancellationToken cancellationToken = default)
     {
+        EnsureInitialized();
+        var now = timeProvider.GetUtcNow();
+
         lock (_lock)
         {
-            var now = DateTimeOffset.UtcNow;
             foreach (var url in urls)
             {
-                if (!string.IsNullOrWhiteSpace(url))
+                if (string.IsNullOrWhiteSpace(url))
                 {
-                    _records.Add(new SentArticleRecord
-                    {
-                        Url = url.Trim(),
-                        SentAt = now
-                    });
+                    continue;
                 }
+
+                _records.Add(new SentArticleRecord
+                {
+                    Url = url.Trim(),
+                    SentAt = now
+                });
             }
 
             // Nettoyage des articles de plus de 30 jours
@@ -60,36 +66,43 @@ public class SentArticlesHistoryService
             _records.RemoveAll(r => r.SentAt < cutoff);
         }
 
-        await SaveAsync();
+        await SaveAsync(cancellationToken);
     }
 
-    private string NormalizeUrl(string url)
+    private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/').ToLowerInvariant();
+
+    private void EnsureInitialized()
     {
-        return url.Trim().TrimEnd('/').ToLowerInvariant();
+        if (fileSystem.File.Exists(_filePath) || _records.Count > 0)
+        {
+            return;
+        }
+
+        Initialize();
     }
 
     private void Load()
     {
         try
         {
-            if (File.Exists(_filePath))
+            if (!fileSystem.File.Exists(_filePath))
             {
-                var json = File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<List<SentArticleRecord>>(json);
-                if (loaded != null)
-                {
-                    _records = loaded;
-                }
+                _records = [];
+                return;
             }
+
+            var json = fileSystem.File.ReadAllText(_filePath);
+            var loaded = JsonSerializer.Deserialize<List<SentArticleRecord>>(json);
+            _records = loaded ?? [];
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Impossible de charger l'historique des articles envoyés. Réinitialisation.");
-            _records = new List<SentArticleRecord>();
+            logger.LogWarning(ex, "Impossible de charger l'historique des articles envoyés. Réinitialisation.");
+            _records = [];
         }
     }
 
-    private async Task SaveAsync()
+    private async Task SaveAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -98,11 +111,12 @@ public class SentArticlesHistoryService
             {
                 json = JsonSerializer.Serialize(_records, new JsonSerializerOptions { WriteIndented = true });
             }
-            await File.WriteAllTextAsync(_filePath, json);
+
+            await fileSystem.File.WriteAllTextAsync(_filePath, json, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Erreur lors de l'enregistrement de l'historique des articles envoyés.");
+            logger.LogError(ex, "Erreur lors de l'enregistrement de l'historique des articles envoyés.");
         }
     }
 }

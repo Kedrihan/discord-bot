@@ -334,16 +334,16 @@
             // Sauvegarde automatique préalable
             await ConfigService.SaveSettingsAsync(settings);
 
-            var (success, resultMessage) = await TechWatchService.ExecuteWatchAsync(isManualTest: true);
-            isSuccessFeedback = success;
-            if (success)
+            var result = await TechWatchService.ExecuteWatchAsync(isManualTest: true);
+            isSuccessFeedback = result.Success;
+            if (result.Success)
             {
                 feedbackMessage = "Veille de test envoyée avec succès sur Discord ! Regardez vos messages.";
-                testPreviewContent = resultMessage;
+                testPreviewContent = result.Message;
             }
             else
             {
-                feedbackMessage = $"Échec de l'envoi : {resultMessage}";
+                feedbackMessage = $"Échec de l'envoi : {result.Message}";
             }
         }
         catch (Exception ex)

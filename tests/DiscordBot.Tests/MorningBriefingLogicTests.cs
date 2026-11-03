@@ -1,0 +1,138 @@
+using DiscordBot.Models;
+using DiscordBot.Services;
+using FluentAssertions;
+using Xunit;
+
+namespace DiscordBot.Tests;
+
+public class MorningBriefingLogicTests
+{
+    [Theory]
+    [InlineData(0, "Ciel dégagé", "☀️")]
+    [InlineData(2, "Éclaircies", "⛅")]
+    [InlineData(61, "Pluie faible", "🌧️")]
+    [InlineData(95, "Orage", "⛈️")]
+    public void GetWeatherDescription_ShouldMapWmoCodesAccurately(int code, string expectedDescription, string expectedEmoji)
+    {
+        // Act
+        var result = OpenMeteoService.GetWeatherDescription(code);
+
+        // Assert
+        result.Description.Should().Be(expectedDescription);
+        result.Emoji.Should().Be(expectedEmoji);
+    }
+
+    [Fact]
+    public void BuildLocalAnalysis_ShouldRecommendBike_WhenWeatherIsDryAndCalm()
+    {
+        // Arrange
+        var aller = new CommuteSlotSummary
+        {
+            TimeRange = "07h - 08h",
+            MinTemp = 12,
+            MaxTemp = 14,
+            MaxRainProbability = 5,
+            TotalPrecipitation = 0.0,
+            MaxWindSpeed = 10,
+            MaxWindGusts = 20,
+            MainCondition = "Ciel dégagé",
+            MainEmoji = "☀️"
+        };
+
+        var retour = new CommuteSlotSummary
+        {
+            TimeRange = "17h - 18h",
+            MinTemp = 18,
+            MaxTemp = 20,
+            MaxRainProbability = 10,
+            TotalPrecipitation = 0.0,
+            MaxWindSpeed = 15,
+            MaxWindGusts = 25,
+            MainCondition = "Éclaircies",
+            MainEmoji = "⛅"
+        };
+
+        // Act
+        var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
+
+        // Assert
+        result.Verdict.Should().Be(BikeVerdict.Ok);
+        result.VerdictBanner.Should().Contain("Conditions idéales");
+    }
+
+    [Fact]
+    public void BuildLocalAnalysis_ShouldAdviseCaution_WhenModerateRainOrGusts()
+    {
+        // Arrange
+        var aller = new CommuteSlotSummary
+        {
+            TimeRange = "07h - 08h",
+            MinTemp = 10,
+            MaxTemp = 11,
+            MaxRainProbability = 55,
+            TotalPrecipitation = 0.5,
+            MaxWindSpeed = 20,
+            MaxWindGusts = 38,
+            MainCondition = "Pluie faible",
+            MainEmoji = "🌧️"
+        };
+
+        var retour = new CommuteSlotSummary
+        {
+            TimeRange = "17h - 18h",
+            MinTemp = 14,
+            MaxTemp = 15,
+            MaxRainProbability = 20,
+            TotalPrecipitation = 0.1,
+            MaxWindSpeed = 15,
+            MaxWindGusts = 25,
+            MainCondition = "Couvert",
+            MainEmoji = "☁️"
+        };
+
+        // Act
+        var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
+
+        // Assert
+        result.Verdict.Should().Be(BikeVerdict.Prudence);
+        result.VerdictBanner.Should().Contain("prudence");
+    }
+
+    [Fact]
+    public void BuildLocalAnalysis_ShouldDiscourageBike_WhenHeavyRainOrDangerousGusts()
+    {
+        // Arrange
+        var aller = new CommuteSlotSummary
+        {
+            TimeRange = "07h - 08h",
+            MinTemp = 8,
+            MaxTemp = 9,
+            MaxRainProbability = 90,
+            TotalPrecipitation = 3.2,
+            MaxWindSpeed = 35,
+            MaxWindGusts = 58,
+            MainCondition = "Pluie forte",
+            MainEmoji = "🌧️"
+        };
+
+        var retour = new CommuteSlotSummary
+        {
+            TimeRange = "17h - 18h",
+            MinTemp = 11,
+            MaxTemp = 12,
+            MaxRainProbability = 80,
+            TotalPrecipitation = 2.0,
+            MaxWindSpeed = 30,
+            MaxWindGusts = 52,
+            MainCondition = "Pluie modérée",
+            MainEmoji = "🌧️"
+        };
+
+        // Act
+        var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
+
+        // Assert
+        result.Verdict.Should().Be(BikeVerdict.Deconseille);
+        result.VerdictBanner.Should().Contain("déconseillé");
+    }
+}

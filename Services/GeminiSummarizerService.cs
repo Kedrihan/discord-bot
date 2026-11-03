@@ -6,15 +6,8 @@ using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
-public class GeminiSummarizerService
+public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
 {
-    private readonly ILogger<GeminiSummarizerService> _logger;
-
-    public GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
-    {
-        _logger = logger;
-    }
-
     public async Task<string> SummarizeAndFormatArticlesAsync(List<NewsArticle> articles, TechWatchSettings settings)
     {
         if (articles.Count == 0)
@@ -35,7 +28,7 @@ public class GeminiSummarizerService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erreur lors de l'appel au SDK Google Gen AI. Utilisation du formatage de secours.");
+                logger.LogError(ex, "Erreur lors de l'appel au SDK Google Gen AI. Utilisation du formatage de secours.");
             }
         }
 
@@ -46,7 +39,7 @@ public class GeminiSummarizerService
     private async Task<string> CallGeminiAsync(List<NewsArticle> articles, TechWatchSettings settings)
     {
         var model = string.IsNullOrWhiteSpace(settings.GeminiModel) || settings.GeminiModel.StartsWith("gemini-1.") || settings.GeminiModel == "gemini-2.0-flash"
-            ? "gemini-flash-latest" 
+            ? "gemini-flash-latest"
             : settings.GeminiModel;
 
         var articlesListText = new StringBuilder();
@@ -81,7 +74,7 @@ Consignes :
         }
         catch (Exception ex) when (model != "gemini-flash-latest")
         {
-            _logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli automatique avec le SDK sur gemini-flash-latest...", model);
+            logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli automatique avec le SDK sur gemini-flash-latest...", model);
             response = await client.Models.GenerateContentAsync(
                 model: "gemini-flash-latest",
                 contents: prompt
@@ -103,7 +96,7 @@ Consignes :
             .Trim();
     }
 
-    private string FormatDirectFallback(List<NewsArticle> articles, int maxArticles)
+    private static string FormatDirectFallback(List<NewsArticle> articles, int maxArticles)
     {
         var sb = new StringBuilder();
         foreach (var a in articles.Take(maxArticles))
