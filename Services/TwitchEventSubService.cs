@@ -58,6 +58,14 @@ public class TwitchEventSubService(
             return false;
         }
 
+        if (string.IsNullOrWhiteSpace(settings.UserAccessToken))
+        {
+            logger.LogInformation("Aucun User Access Token Twitch configuré. Le WebSocket EventSub requiert un jeton utilisateur. Mode polling automatique actif.");
+            _status = TwitchEventSubStatus.Disconnected;
+            NotifyStatusChanged();
+            return false;
+        }
+
         try
         {
             _status = TwitchEventSubStatus.Connecting;
@@ -105,7 +113,10 @@ public class TwitchEventSubService(
     public async Task<int> ResubscribeAllAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
-        if (!settings.IsEnabled || string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        if (!settings.IsEnabled ||
+            string.IsNullOrWhiteSpace(settings.ClientId) ||
+            string.IsNullOrWhiteSpace(settings.ClientSecret) ||
+            string.IsNullOrWhiteSpace(settings.UserAccessToken))
         {
             if (IsConnected)
             {
@@ -171,8 +182,18 @@ public class TwitchEventSubService(
                     continue;
                 }
 
-                var onlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(sessionId, "stream.online", userId, ct);
-                var offlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(sessionId, "stream.offline", userId, ct);
+                var onlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(
+                    sessionId,
+                    "stream.online",
+                    userId,
+                    settings.UserAccessToken,
+                    ct);
+                var offlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(
+                    sessionId,
+                    "stream.offline",
+                    userId,
+                    settings.UserAccessToken,
+                    ct);
 
                 if (onlineSub.Success && offlineSub.Success)
                 {

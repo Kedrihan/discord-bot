@@ -15,7 +15,8 @@ public class TwitchSettings
     public bool IsEnabled { get; set; } = true;
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
-    public int CheckIntervalSeconds { get; set; } = 60;
+    public string UserAccessToken { get; set; } = string.Empty;
+    public int CheckIntervalSeconds { get; set; } = 30;
     public List<TrackedTwitchChannel> Channels { get; set; } = [];
 }
 

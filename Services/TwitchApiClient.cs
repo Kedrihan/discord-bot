@@ -202,6 +202,7 @@ public class TwitchApiClient(
         string sessionId,
         string eventType,
         string broadcasterUserId,
+        string? userAccessToken = null,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(sessionId))
@@ -223,7 +224,12 @@ public class TwitchApiClient(
             return new TwitchSubscriptionResult(false, null, "Identifiants Twitch non configurés.");
         }
 
-        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        var token = !string.IsNullOrWhiteSpace(userAccessToken)
+            ? userAccessToken.Trim()
+            : (!string.IsNullOrWhiteSpace(settings.UserAccessToken)
+                ? settings.UserAccessToken.Trim()
+                : await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct));
+
         if (string.IsNullOrEmpty(token))
         {
             return new TwitchSubscriptionResult(false, null, "Impossible d'obtenir un token d'accès Twitch.");
@@ -276,7 +282,10 @@ public class TwitchApiClient(
         }
     }
 
-    public async Task<bool> DeleteEventSubSubscriptionAsync(string subscriptionId, CancellationToken ct = default)
+    public async Task<bool> DeleteEventSubSubscriptionAsync(
+        string subscriptionId,
+        string? userAccessToken = null,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(subscriptionId)) return false;
 
@@ -286,7 +295,12 @@ public class TwitchApiClient(
             return false;
         }
 
-        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        var token = !string.IsNullOrWhiteSpace(userAccessToken)
+            ? userAccessToken.Trim()
+            : (!string.IsNullOrWhiteSpace(settings.UserAccessToken)
+                ? settings.UserAccessToken.Trim()
+                : await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct));
+
         if (string.IsNullOrEmpty(token)) return false;
 
         try

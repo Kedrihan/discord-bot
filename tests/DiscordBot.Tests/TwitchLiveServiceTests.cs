@@ -131,7 +131,8 @@ public class TwitchLiveServiceTests
         var inMemoryConfig = new Dictionary<string, string?>
         {
             ["TWITCH_CLIENT_ID"] = "env-client-id",
-            ["TWITCH_CLIENT_SECRET"] = "env-client-secret"
+            ["TWITCH_CLIENT_SECRET"] = "env-client-secret",
+            ["TWITCH_USER_ACCESS_TOKEN"] = "env-user-token"
         };
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
         var configService = new TwitchConfigService(_fileSystem, configuration, NullLogger<TwitchConfigService>.Instance);
@@ -142,6 +143,7 @@ public class TwitchLiveServiceTests
         // Assert
         settings.ClientId.Should().Be("env-client-id");
         settings.ClientSecret.Should().Be("env-client-secret");
+        settings.UserAccessToken.Should().Be("env-user-token");
     }
 
     [Test]
@@ -156,6 +158,7 @@ public class TwitchLiveServiceTests
             IsEnabled = true,
             ClientId = "custom-id",
             ClientSecret = "custom-secret",
+            UserAccessToken = "custom-user-token-123",
             CheckIntervalSeconds = 45,
             Channels =
             [
@@ -173,6 +176,8 @@ public class TwitchLiveServiceTests
         // Assert
         var saved = configService.GetSettings();
         saved.ClientId.Should().Be("custom-id");
+        saved.UserAccessToken.Should().Be("custom-user-token-123");
+        saved.CheckIntervalSeconds.Should().Be(45);
         saved.Channels.Should().HaveCount(1);
         saved.Channels[0].TwitchUsername.Should().Be("teststreamer");
     }

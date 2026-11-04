@@ -103,5 +103,14 @@ public class TwitchConfigService(
                 target.ClientSecret = envClientSecret;
             }
         }
+
+        if (string.IsNullOrWhiteSpace(target.UserAccessToken))
+        {
+            var envUserAccessToken = configuration["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN");
+            if (!string.IsNullOrWhiteSpace(envUserAccessToken))
+            {
+                target.UserAccessToken = envUserAccessToken;
+            }
+        }
     }
 }
