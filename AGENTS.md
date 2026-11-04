@@ -97,3 +97,12 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
   * Logique de déduplication et historiques.
   * Parsing et manipulation de données.
 * Les abstractions `TimeProvider` (`Microsoft.Extensions.TimeProvider.Testing`) et `IFileSystem` (`TestableIO.System.IO.Abstractions.TestingHelpers`) doivent être mockées pour garantir des tests déterministes, rapides et sans effets de bord.
+
+---
+
+### 10. Analyse du Besoin & Cadrage Interactif (Sous-Agent Dédié)
+* **Cadrage systématique lors de l'expression d'un nouveau besoin :**
+  * Dès qu'un besoin, une nouvelle fonctionnalité ou une évolution métier est exprimé(e) par l'utilisateur, lancer systématiquement un **sous-agent d'analyse du besoin** avec un modèle Gemini adapté à la tâche (`pro` pour les besoins complexes ou réflexions d'architecture, `inherit`/`flash` pour les cadrages ciblés).
+  * Le sous-agent est chargé d'examiner le contexte, d'identifier les zones d'ombre, les ambiguïtés et les cas limites.
+  * Il pose les questions pertinentes de façon interactive (notamment via `ask_question` ou questions directes) pour affiner le périmètre avant toute implémentation.
+  * Ne pas démarrer le développement d'une fonctionnalité non triviale sans cette étape de clarification et validation du plan avec l'utilisateur.
