@@ -1,0 +1,497 @@
+@page "/twitch"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@rendermode InteractiveServer
+@inject TwitchConfigService ConfigService
+@inject TwitchLiveService LiveService
+@inject TwitchStateService StateService
+@inject DiscordSocketClient DiscordClient
+
+<div class="container py-2" style="max-width: 1000px;">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bi bi-twitch text-primary me-2" style="color: #9146FF !important;"></i>Notifications Twitch Live
+            </h3>
+            <p class="text-secondary mb-0">Alertes Discord en temps réel lorsqu'un streamer passe en direct avec suppression automatique du message hors ligne.</p>
+        </div>
+        <div class="form-check form-switch fs-4">
+            <input class="form-check-input" type="checkbox" id="enableSwitch" @bind="settings.IsEnabled">
+        </div>
+    </div>
+
+    <!-- Alertes de feedback -->
+    @if (!string.IsNullOrEmpty(feedbackMessage))
+    {
+        <div class="alert @(isSuccessFeedback ? "alert-success" : "alert-danger") alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
+            <i class="bi @(isSuccessFeedback ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") fs-5"></i>
+            <div class="flex-grow-1">@feedbackMessage</div>
+            <button type="button" class="btn-close" @onclick="() => feedbackMessage = null"></button>
+        </div>
+    }
+
+    <div class="row g-4 mb-4">
+        <!-- 1. Configuration API Twitch -->
+        <div class="col-lg-6">
+            <div class="card p-4 h-100 shadow-sm border-secondary">
+                <h5 class="fw-bold mb-3">
+                    <i class="bi bi-key me-2 text-warning"></i>Identifiants API Twitch
+                </h5>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Twitch Client ID</label>
+                    <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                           placeholder="ex: gp762nuuoqcoxypju8c569th9wz7q5"
+                           @bind="settings.ClientId" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Twitch Client Secret</label>
+                    <div class="input-group">
+                        <input type="@(showSecret ? "text" : "password")"
+                               class="form-control bg-dark text-light border-secondary font-monospace"
+                               placeholder="ex: abcd1234efgh5678ijkl"
+                               @bind="settings.ClientSecret" />
+                        <button class="btn btn-outline-secondary" type="button" @onclick="() => showSecret = !showSecret">
+                            <i class="bi @(showSecret ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
+                    <div class="form-text text-secondary small">
+                        Peuvent également être définis via <code>TWITCH_CLIENT_ID</code> et <code>TWITCH_CLIENT_SECRET</code> (.env).
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Fréquence de vérification (secondes)</label>
+                    <input type="number" min="15" max="3600" step="15"
+                           class="form-control bg-dark text-light border-secondary font-monospace"
+                           @bind="settings.CheckIntervalSeconds" />
+                    <div class="form-text text-secondary small">
+                        Recommandé : 60 secondes (minimum 15s).
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Actions & État -->
+        <div class="col-lg-6">
+            <div class="card p-4 h-100 shadow-sm border-secondary d-flex flex-column justify-content-between">
+                <div>
+                    <h5 class="fw-bold mb-3">
+                        <i class="bi bi-broadcast-pin me-2 text-info"></i>Statut & Actions
+                    </h5>
+
+                    <ul class="list-group list-group-flush bg-transparent mb-3">
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                            <span>Statut du bot Discord :</span>
+                            <span class="badge @(DiscordClient.ConnectionState == Discord.ConnectionState.Connected ? "bg-success" : "bg-warning")">
+                                @DiscordClient.ConnectionState
+                            </span>
+                        </li>
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                            <span>Chaînes surveillées :</span>
+                            <span class="fw-bold">@settings.Channels.Count</span>
+                        </li>
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                            <span>Streams actuellement en direct :</span>
+                            <span class="badge bg-danger">@StateService.GetActiveStreams().Count</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="d-flex flex-column gap-2 mt-3">
+                    <button class="btn btn-primary d-flex align-items-center justify-content-center gap-2"
+                            style="background-color: #9146FF; border-color: #9146FF;"
+                            @onclick="SaveSettingsAsync">
+                        <i class="bi bi-floppy"></i>
+                        Enregistrer la configuration
+                    </button>
+
+                    <button class="btn btn-outline-info d-flex align-items-center justify-content-center gap-2"
+                            disabled="@isChecking"
+                            @onclick="CheckNowAsync">
+                        @if (isChecking)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span>Vérification en cours...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-repeat"></i>
+                            <span>Vérifier les streams maintenant</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Gestion des chaînes suivies -->
+    <div class="card p-4 shadow-sm border-secondary mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">
+                <i class="bi bi-people-fill me-2" style="color: #9146FF;"></i>Chaînes Twitch surveillées
+            </h5>
+            @if (!isAddingChannel && editingChannel == null)
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="StartAddChannel">
+                    <i class="bi bi-plus-lg me-1"></i>Ajouter une chaîne
+                </button>
+            }
+        </div>
+
+        <!-- Formulaire Ajout / Édition -->
+        @if (isAddingChannel || editingChannel != null)
+        {
+            <div class="card p-3 mb-4 bg-dark border-primary">
+                <h6 class="fw-bold mb-3 text-info">
+                    <i class="bi @(editingChannel != null ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
+                    @(editingChannel != null ? "Modifier la chaîne" : "Nouvelle chaîne à surveiller")
+                </h6>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold text-secondary">Nom d'utilisateur Twitch</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-secondary text-light border-secondary">twitch.tv/</span>
+                            <input type="text" class="form-control bg-dark text-light border-secondary"
+                                   placeholder="zerator"
+                                   @bind="formTwitchUsername" />
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold text-secondary">Salon Discord cible (ID)</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                               placeholder="ex: 123456789012345678"
+                               @bind="formDiscordChannelId" />
+                        <div class="form-text text-secondary small">
+                            ID numérique du salon Discord où envoyer l'alerte.
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label small fw-semibold text-secondary mb-0">Message personnalisé</label>
+                            <div class="small">
+                                <span class="text-secondary me-1">Variables :</span>
+                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{streamer}")'>{streamer}</button>
+                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{title}")'>{title}</button>
+                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{game}")'>{game}</button>
+                                <button type="button" class="badge bg-secondary border-0" @onclick='() => AppendVariable("{url}")'>{url}</button>
+                            </div>
+                        </div>
+                        <textarea class="form-control bg-dark text-light border-secondary" rows="2"
+                                  @bind="formCustomMessage"></textarea>
+                    </div>
+
+                    <div class="col-12 d-flex justify-content-between align-items-center">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="channelEnableSwitch" @bind="formIsEnabled">
+                            <label class="form-check-label small" for="channelEnableSwitch">Activer la surveillance pour cette chaîne</label>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelForm">Annuler</button>
+                            <button class="btn btn-sm btn-primary" style="background-color: #9146FF; border-color: #9146FF;" @onclick="SaveChannelForm">
+                                Enregistrer la chaîne
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Liste des chaînes -->
+        @if (settings.Channels.Count == 0)
+        {
+            <div class="text-center py-4 text-secondary">
+                <i class="bi bi-camera-video-off fs-2 d-block mb-2"></i>
+                <p class="mb-0">Aucune chaîne Twitch enregistrée pour le moment. Cliquez sur "Ajouter une chaîne" pour commencer.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead>
+                        <tr class="text-secondary small">
+                            <th>Statut</th>
+                            <th>Chaîne Twitch</th>
+                            <th>Salon Discord</th>
+                            <th>Message</th>
+                            <th class="text-center">Actif</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ch in settings.Channels)
+                        {
+                            var activeState = StateService.GetActiveStream(ch.TwitchUsername);
+                            var isLive = activeState != null;
+                            var channelIdNum = ulong.TryParse(ch.DiscordChannelId, out var parsedId) ? parsedId : 0;
+                            var discordChannelName = channelIdNum != 0 ? (DiscordClient.GetChannel(channelIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
+
+                            <tr>
+                                <td>
+                                    @if (isLive)
+                                    {
+                                        <span class="badge bg-danger d-inline-flex align-items-center gap-1">
+                                            <i class="bi bi-broadcast"></i> EN DIRECT
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Hors ligne</span>
+                                    }
+                                </td>
+                                <td>
+                                    <a href="https://twitch.tv/@ch.TwitchUsername" target="_blank" class="fw-bold text-decoration-none text-light d-flex align-items-center gap-1">
+                                        <i class="bi bi-twitch" style="color: #9146FF;"></i>
+                                        <span>@ch.TwitchUsername</span>
+                                        <i class="bi bi-box-arrow-up-right small text-secondary"></i>
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-dark font-monospace border border-secondary">
+                                        @(discordChannelName != null ? $"#{discordChannelName}" : ch.DiscordChannelId)
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="small text-secondary text-truncate d-inline-block" style="max-width: 200px;" title="@ch.CustomMessage">
+                                        @ch.CustomMessage
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <div class="form-check form-switch d-inline-block">
+                                        <input class="form-check-input" type="checkbox" @bind="ch.IsEnabled" />
+                                    </div>
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-info"
+                                                title="Tester l'envoi de notification"
+                                                disabled="@testingChannels.Contains(ch.TwitchUsername)"
+                                                @onclick="() => TestNotificationAsync(ch.TwitchUsername)">
+                                            @if (testingChannels.Contains(ch.TwitchUsername))
+                                            {
+                                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-send"></i>
+                                            }
+                                        </button>
+                                        <button class="btn btn-outline-warning" title="Modifier" @onclick="() => EditChannel(ch)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannel(ch)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private TwitchSettings settings = new();
+    private bool showSecret = false;
+    private bool isChecking = false;
+    private readonly HashSet<string> testingChannels = new(StringComparer.OrdinalIgnoreCase);
+
+    private string? feedbackMessage;
+    private bool isSuccessFeedback = true;
+
+    // État du formulaire d'ajout/édition
+    private bool isAddingChannel = false;
+    private TrackedTwitchChannel? editingChannel = null;
+    private string formTwitchUsername = string.Empty;
+    private string formDiscordChannelId = string.Empty;
+    private string formCustomMessage = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
+    private bool formIsEnabled = true;
+
+    protected override void OnInitialized()
+    {
+        settings = ConfigService.GetSettings();
+    }
+
+    private void StartAddChannel()
+    {
+        editingChannel = null;
+        isAddingChannel = true;
+        formTwitchUsername = string.Empty;
+        formDiscordChannelId = string.Empty;
+        formCustomMessage = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
+        formIsEnabled = true;
+    }
+
+    private void EditChannel(TrackedTwitchChannel channel)
+    {
+        isAddingChannel = false;
+        editingChannel = channel;
+        formTwitchUsername = channel.TwitchUsername;
+        formDiscordChannelId = channel.DiscordChannelId;
+        formCustomMessage = channel.CustomMessage;
+        formIsEnabled = channel.IsEnabled;
+    }
+
+    private void CancelForm()
+    {
+        isAddingChannel = false;
+        editingChannel = null;
+    }
+
+    private void AppendVariable(string token)
+    {
+        formCustomMessage += (string.IsNullOrEmpty(formCustomMessage) ? "" : " ") + token;
+    }
+
+    private void SaveChannelForm()
+    {
+        var rawUsername = formTwitchUsername.Trim();
+        if (rawUsername.StartsWith("https://twitch.tv/", StringComparison.OrdinalIgnoreCase))
+        {
+            rawUsername = rawUsername["https://twitch.tv/".Length..];
+        }
+        else if (rawUsername.StartsWith("http://twitch.tv/", StringComparison.OrdinalIgnoreCase))
+        {
+            rawUsername = rawUsername["http://twitch.tv/".Length..];
+        }
+        else if (rawUsername.StartsWith("twitch.tv/", StringComparison.OrdinalIgnoreCase))
+        {
+            rawUsername = rawUsername["twitch.tv/".Length..];
+        }
+        rawUsername = rawUsername.TrimStart('@').TrimEnd('/');
+
+        if (string.IsNullOrWhiteSpace(rawUsername))
+        {
+            feedbackMessage = "Le nom d'utilisateur Twitch ne peut pas être vide.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(rawUsername, @"^[a-zA-Z0-9_]{2,30}$"))
+        {
+            feedbackMessage = "Le nom d'utilisateur Twitch contient des caractères non autorisés (uniquement lettres, chiffres et tirets du bas, 2 à 30 caractères).";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var channelIdTrimmed = formDiscordChannelId.Trim();
+        if (string.IsNullOrWhiteSpace(channelIdTrimmed) || !ulong.TryParse(channelIdTrimmed, out var parsedChannelId) || parsedChannelId == 0)
+        {
+            feedbackMessage = "L'ID du salon Discord doit être un identifiant numérique valide (ex: 123456789012345678).";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (editingChannel != null)
+        {
+            editingChannel.TwitchUsername = rawUsername;
+            editingChannel.DiscordChannelId = channelIdTrimmed;
+            editingChannel.CustomMessage = string.IsNullOrWhiteSpace(formCustomMessage) ? "🔴 **{streamer}** est en direct sur Twitch !\n{url}" : formCustomMessage;
+            editingChannel.IsEnabled = formIsEnabled;
+        }
+        else
+        {
+            var existing = settings.Channels.FirstOrDefault(c => string.Equals(c.TwitchUsername, rawUsername, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                feedbackMessage = $"La chaîne '{rawUsername}' est déjà dans la liste.";
+                isSuccessFeedback = false;
+                return;
+            }
+
+            settings.Channels.Add(new TrackedTwitchChannel
+            {
+                TwitchUsername = rawUsername,
+                DiscordChannelId = channelIdTrimmed,
+                CustomMessage = string.IsNullOrWhiteSpace(formCustomMessage) ? "🔴 **{streamer}** est en direct sur Twitch !\n{url}" : formCustomMessage,
+                IsEnabled = formIsEnabled
+            });
+        }
+
+        CancelForm();
+        feedbackMessage = "Chaîne enregistrée avec succès. N'oubliez pas d'enregistrer la configuration globale.";
+        isSuccessFeedback = true;
+    }
+
+    private void RemoveChannel(TrackedTwitchChannel channel)
+    {
+        settings.Channels.Remove(channel);
+        feedbackMessage = $"Chaîne '{channel.TwitchUsername}' supprimée.";
+        isSuccessFeedback = true;
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            settings.CheckIntervalSeconds = Math.Clamp(settings.CheckIntervalSeconds, 15, 3600);
+            await ConfigService.SaveSettingsAsync(settings);
+            isSuccessFeedback = true;
+            feedbackMessage = "Configuration Twitch enregistrée avec succès !";
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Erreur lors de l'enregistrement : {ex.Message}";
+        }
+    }
+
+    private async Task CheckNowAsync()
+    {
+        isChecking = true;
+        feedbackMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+            var result = await LiveService.CheckStreamsAsync();
+            isSuccessFeedback = result.Success;
+            feedbackMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Erreur lors de la vérification : {ex.Message}";
+        }
+        finally
+        {
+            isChecking = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestNotificationAsync(string username)
+    {
+        testingChannels.Add(username);
+        feedbackMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+            var result = await LiveService.TestNotificationAsync(username);
+            isSuccessFeedback = result.Success;
+            feedbackMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Erreur lors du test de notification : {ex.Message}";
+        }
+        finally
+        {
+            testingChannels.Remove(username);
+            StateHasChanged();
+        }
+    }
+}
