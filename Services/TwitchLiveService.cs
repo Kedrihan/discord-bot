@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
 using DiscordBot.Models;
@@ -14,6 +15,23 @@ public class TwitchLiveService(
 {
     public static readonly Color TwitchPurple = new(0x91, 0x46, 0xFF);
     private readonly SemaphoreSlim _checkLock = new(1, 1);
+    private readonly ConcurrentDictionary<string, TwitchStreamInfo> _liveStreamsCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public event Action? OnLiveStatusChanged;
+
+    public bool IsStreamLive(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        return _liveStreamsCache.ContainsKey(username.Trim());
+    }
+
+    public TwitchStreamInfo? GetLiveStreamInfo(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return null;
+        return _liveStreamsCache.TryGetValue(username.Trim(), out var info) ? info : null;
+    }
+
+    public IReadOnlyDictionary<string, TwitchStreamInfo> GetLiveStreams() => _liveStreamsCache;
 
     public static string FormatMessage(string template, string streamer, string title, string game, string url)
     {
@@ -124,8 +142,15 @@ public class TwitchLiveService(
 
         try
         {
-            logger.LogDebug("Vérification de {Count} chaînes Twitch...", activeChannels.Count);
-            var onlineStreams = await twitchApiClient.GetStreamsAsync(activeChannels.Select(c => c.TwitchUsername), ct);
+            var allTrackedUsernames = settings.Channels
+                .Select(c => c.TwitchUsername.Trim())
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            logger.LogDebug("Vérification de {Count} chaînes Twitch...", allTrackedUsernames.Count);
+            var onlineStreams = await twitchApiClient.GetStreamsAsync(allTrackedUsernames, ct);
+            UpdateCache(onlineStreams);
 
             // 1. Détecter et notifier les streams nouvellement en direct
             foreach (var stream in onlineStreams)
@@ -272,6 +297,88 @@ public class TwitchLiveService(
         {
             logger.LogError(ex, "Erreur lors de l'envoi de la notification de test pour {Username}.", username);
             return new TwitchExecutionResult(false, $"Erreur lors de l'envoi : {ex.Message}");
+        }
+    }
+
+    public async Task RefreshLiveStatusAsync(CancellationToken ct = default)
+    {
+        var settings = configService.GetSettings();
+        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        {
+            return;
+        }
+
+        var allTrackedUsernames = settings.Channels
+            .Select(c => c.TwitchUsername.Trim())
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (allTrackedUsernames.Count == 0)
+        {
+            if (!_liveStreamsCache.IsEmpty)
+            {
+                _liveStreamsCache.Clear();
+                NotifyLiveStatusChanged();
+            }
+            return;
+        }
+
+        if (!await _checkLock.WaitAsync(0, ct))
+        {
+            return;
+        }
+
+        try
+        {
+            var onlineStreams = await twitchApiClient.GetStreamsAsync(allTrackedUsernames, ct);
+            UpdateCache(onlineStreams);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Erreur lors du rafraîchissement des statuts de stream Twitch.");
+        }
+        finally
+        {
+            _checkLock.Release();
+        }
+    }
+
+    private void UpdateCache(IReadOnlyList<TwitchStreamInfo> onlineStreams)
+    {
+        var activeLogins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var stream in onlineStreams)
+        {
+            _liveStreamsCache[stream.UserLogin] = stream;
+            activeLogins.Add(stream.UserLogin);
+        }
+
+        foreach (var key in _liveStreamsCache.Keys)
+        {
+            if (!activeLogins.Contains(key))
+            {
+                _liveStreamsCache.TryRemove(key, out _);
+            }
+        }
+
+        NotifyLiveStatusChanged();
+    }
+
+    private void NotifyLiveStatusChanged()
+    {
+        var handler = OnLiveStatusChanged;
+        if (handler == null) return;
+
+        foreach (var receiver in handler.GetInvocationList())
+        {
+            try
+            {
+                ((Action)receiver)();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erreur lors de la notification OnLiveStatusChanged.");
+            }
         }
     }
 

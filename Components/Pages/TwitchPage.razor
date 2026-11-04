@@ -1,6 +1,7 @@
 @page "/twitch"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
 @rendermode InteractiveServer
+@implements IDisposable
 @inject TwitchConfigService ConfigService
 @inject TwitchLiveService LiveService
 @inject TwitchStateService StateService
@@ -94,7 +95,7 @@
                         </li>
                         <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
                             <span>Streams actuellement en direct :</span>
-                            <span class="badge bg-danger">@StateService.GetActiveStreams().Count</span>
+                            <span class="badge @(LiveService.GetLiveStreams().Count > 0 ? "bg-danger" : "bg-secondary")">@LiveService.GetLiveStreams().Count</span>
                         </li>
                     </ul>
                 </div>
@@ -227,8 +228,8 @@
                     <tbody>
                         @foreach (var ch in settings.Channels)
                         {
-                            var activeState = StateService.GetActiveStream(ch.TwitchUsername);
-                            var isLive = activeState != null;
+                            var isLive = LiveService.IsStreamLive(ch.TwitchUsername);
+                            var streamInfo = LiveService.GetLiveStreamInfo(ch.TwitchUsername);
                             var channelIdNum = ulong.TryParse(ch.DiscordChannelId, out var parsedId) ? parsedId : 0;
                             var discordChannelName = channelIdNum != 0 ? (DiscordClient.GetChannel(channelIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
 
@@ -236,7 +237,7 @@
                                 <td>
                                     @if (isLive)
                                     {
-                                        <span class="badge bg-danger d-inline-flex align-items-center gap-1">
+                                        <span class="badge bg-danger d-inline-flex align-items-center gap-1" title="@(streamInfo != null ? $"{streamInfo.GameName} ({streamInfo.ViewerCount:N0} spectateurs)" : "En direct")">
                                             <i class="bi bi-broadcast"></i> EN DIRECT
                                         </span>
                                     }
@@ -319,6 +320,26 @@
     protected override void OnInitialized()
     {
         settings = ConfigService.GetSettings();
+        LiveService.OnLiveStatusChanged += HandleLiveStatusChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hasCredentials = !string.IsNullOrWhiteSpace(settings.ClientId) && !string.IsNullOrWhiteSpace(settings.ClientSecret);
+        if (hasCredentials && settings.Channels.Count > 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await LiveService.RefreshLiveStatusAsync();
+                }
+                catch
+                {
+                    // Erreur silencieuse en arrière-plan
+                }
+            });
+        }
     }
 
     private void StartAddChannel()
@@ -437,12 +458,45 @@
             await ConfigService.SaveSettingsAsync(settings);
             isSuccessFeedback = true;
             feedbackMessage = "Configuration Twitch enregistrée avec succès !";
+
+            var hasCredentials = !string.IsNullOrWhiteSpace(settings.ClientId) && !string.IsNullOrWhiteSpace(settings.ClientSecret);
+            if (hasCredentials && settings.Channels.Count > 0)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await LiveService.RefreshLiveStatusAsync();
+                    }
+                    catch
+                    {
+                        // Silencieux
+                    }
+                });
+            }
         }
         catch (Exception ex)
         {
             isSuccessFeedback = false;
             feedbackMessage = $"Erreur lors de l'enregistrement : {ex.Message}";
         }
+    }
+
+    private async void HandleLiveStatusChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception)
+        {
+            // Circuit may be disconnected or component disposed
+        }
+    }
+
+    public void Dispose()
+    {
+        LiveService.OnLiveStatusChanged -= HandleLiveStatusChanged;
     }
 
     private async Task CheckNowAsync()

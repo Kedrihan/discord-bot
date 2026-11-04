@@ -429,6 +429,248 @@ public class TwitchLiveServiceTests
         secondRunResult.Message.Should().Contain("déjà en cours");
     }
 
+    [Test]
+    public async Task RefreshLiveStatusAsync_ShouldUpdateCache_And_TriggerOnLiveStatusChanged()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder().Build();
+        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        await configService.SaveSettingsAsync(new TwitchSettings
+        {
+            IsEnabled = true,
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret",
+            Channels =
+            [
+                new TrackedTwitchChannel { TwitchUsername = "zerator", DiscordChannelId = "123" },
+                new TrackedTwitchChannel { TwitchUsername = "kamet0", DiscordChannelId = "456" }
+            ]
+        });
+
+        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
+
+        var isStreamLive = true;
+        var httpHandler = new MockHttpMessageHandler(request =>
+        {
+            if (request.RequestUri?.AbsolutePath.Contains("oauth2/token") == true)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"access_token":"mock-token","expires_in":3600,"token_type":"bearer"}""")
+                };
+            }
+
+            if (isStreamLive)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""
+                    {
+                        "data": [
+                            {
+                                "id": "stream-101",
+                                "user_id": "user-zerator",
+                                "user_login": "zerator",
+                                "user_name": "ZeratoR",
+                                "game_name": "Trackmania",
+                                "title": "Live Cup",
+                                "viewer_count": 5000,
+                                "started_at": "2026-11-04T18:00:00Z",
+                                "thumbnail_url": "https://previews/test-{width}x{height}.jpg"
+                            }
+                        ]
+                    }
+                    """)
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"data": []}""")
+            };
+        });
+
+        var httpClient = new HttpClient(httpHandler);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
+
+        var eventCount = 0;
+        liveService.OnLiveStatusChanged += () => eventCount++;
+
+        // Initial check before refresh
+        liveService.IsStreamLive("ZERATOR").Should().BeFalse();
+        liveService.GetLiveStreamInfo("zerator").Should().BeNull();
+        liveService.GetLiveStreams().Should().BeEmpty();
+
+        // Act 1: Stream ZeratoR est en direct
+        await liveService.RefreshLiveStatusAsync();
+
+        // Assert 1
+        eventCount.Should().Be(1);
+        liveService.IsStreamLive("ZERATOR").Should().BeTrue();
+        liveService.IsStreamLive("zerator").Should().BeTrue();
+        liveService.IsStreamLive("kamet0").Should().BeFalse();
+        var streamInfo = liveService.GetLiveStreamInfo("zerator");
+        streamInfo.Should().NotBeNull();
+        streamInfo!.Title.Should().Be("Live Cup");
+        streamInfo.ViewerCount.Should().Be(5000);
+        liveService.GetLiveStreams().Should().HaveCount(1);
+
+        // Act 2: Streamer passe hors-ligne
+        isStreamLive = false;
+        await liveService.RefreshLiveStatusAsync();
+
+        // Assert 2
+        eventCount.Should().Be(2);
+        liveService.IsStreamLive("zerator").Should().BeFalse();
+        liveService.GetLiveStreamInfo("zerator").Should().BeNull();
+        liveService.GetLiveStreams().Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task CheckStreamsAsync_ShouldUpdateLiveStreamsCache_EvenForDisabledChannels()
+    {
+        // Arrange: 1 channel enabled for Discord, 1 channel disabled for Discord
+        var config = new ConfigurationBuilder().Build();
+        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        await configService.SaveSettingsAsync(new TwitchSettings
+        {
+            IsEnabled = true,
+            ClientId = "test-client-id",
+            ClientSecret = "test-client-secret",
+            Channels =
+            [
+                new TrackedTwitchChannel { TwitchUsername = "activeStreamer", DiscordChannelId = "111", IsEnabled = true },
+                new TrackedTwitchChannel { TwitchUsername = "disabledStreamer", DiscordChannelId = "222", IsEnabled = false }
+            ]
+        });
+
+        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
+
+        var httpHandler = new MockHttpMessageHandler(request =>
+        {
+            if (request.RequestUri?.AbsolutePath.Contains("oauth2/token") == true)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"access_token":"mock-token","expires_in":3600,"token_type":"bearer"}""")
+                };
+            }
+
+            // Both streamers returned as live
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                {
+                    "data": [
+                        {
+                            "id": "s1",
+                            "user_id": "u1",
+                            "user_login": "activestreamer",
+                            "user_name": "ActiveStreamer",
+                            "game_name": "Game 1",
+                            "title": "Title 1",
+                            "viewer_count": 100,
+                            "started_at": "2026-11-04T18:00:00Z",
+                            "thumbnail_url": "thumb"
+                        },
+                        {
+                            "id": "s2",
+                            "user_id": "u2",
+                            "user_login": "disabledstreamer",
+                            "user_name": "DisabledStreamer",
+                            "game_name": "Game 2",
+                            "title": "Title 2",
+                            "viewer_count": 200,
+                            "started_at": "2026-11-04T18:00:00Z",
+                            "thumbnail_url": "thumb"
+                        }
+                    ]
+                }
+                """)
+            };
+        });
+
+        var httpClient = new HttpClient(httpHandler);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
+
+        var eventFired = false;
+        liveService.OnLiveStatusChanged += () => eventFired = true;
+
+        // Act
+        var result = await liveService.CheckStreamsAsync();
+
+        // Assert
+        result.Success.Should().BeTrue();
+        eventFired.Should().BeTrue();
+        liveService.IsStreamLive("activestreamer").Should().BeTrue();
+        liveService.IsStreamLive("disabledstreamer").Should().BeTrue();
+        liveService.GetLiveStreams().Should().HaveCount(2);
+    }
+
+    [Test]
+    public async Task RefreshLiveStatusAsync_ShouldIsolateFailingSubscribers_AndNotifyRemaining()
+    {
+        // Arrange
+        var config = new ConfigurationBuilder().Build();
+        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        await configService.SaveSettingsAsync(new TwitchSettings
+        {
+            IsEnabled = true,
+            ClientId = "test-id",
+            ClientSecret = "test-secret",
+            Channels = [new TrackedTwitchChannel { TwitchUsername = "streamer", DiscordChannelId = "123" }]
+        });
+
+        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
+
+        var httpHandler = new MockHttpMessageHandler(request =>
+        {
+            if (request.RequestUri?.AbsolutePath.Contains("oauth2/token") == true)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"access_token":"mock-token","expires_in":3600,"token_type":"bearer"}""")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"data": []}""")
+            };
+        });
+
+        var httpClient = new HttpClient(httpHandler);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
+
+        var firstFailed = false;
+        var secondSucceeded = false;
+
+        liveService.OnLiveStatusChanged += () =>
+        {
+            firstFailed = true;
+            throw new InvalidOperationException("Subscriber simulated failure");
+        };
+
+        liveService.OnLiveStatusChanged += () =>
+        {
+            secondSucceeded = true;
+        };
+
+        // Act - should not throw
+        var act = async () => await liveService.RefreshLiveStatusAsync();
+        await act.Should().NotThrowAsync();
+
+        // Assert
+        firstFailed.Should().BeTrue();
+        secondSucceeded.Should().BeTrue();
+    }
+
     private class MockHttpMessageHandler : HttpMessageHandler
     {
         private readonly Func<HttpRequestMessage, Task<HttpResponseMessage>> _responseFactory;
