@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DiscordBot.Models;
@@ -18,6 +19,7 @@ public class TwitchApiClient(
     private string? _cachedToken;
     private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
     private readonly ConcurrentDictionary<string, (string Url, DateTimeOffset CachedAt)> _avatarCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, string> _userIdCache = new(StringComparer.OrdinalIgnoreCase);
 
     public async Task<IReadOnlyList<TwitchStreamInfo>> GetStreamsAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
     {
@@ -93,77 +95,241 @@ public class TwitchApiClient(
         return results;
     }
 
+    public async Task<IReadOnlyList<TwitchUserInfo>> GetUsersByLoginAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
+    {
+        var logins = userLogins
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (logins.Count == 0) return [];
+
+        var settings = configService.GetSettings();
+        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        {
+            logger.LogWarning("Les identifiants de l'API Twitch (Client ID ou Client Secret) ne sont pas configurés.");
+            return [];
+        }
+
+        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        if (string.IsNullOrEmpty(token)) return [];
+
+        var results = new List<TwitchUserInfo>();
+        var now = timeProvider.GetUtcNow();
+
+        foreach (var chunk in logins.Chunk(100))
+        {
+            try
+            {
+                var queryParams = string.Join("&", chunk.Select(u => $"login={Uri.EscapeDataString(u.Trim())}"));
+                var requestUri = $"https://api.twitch.tv/helix/users?{queryParams}";
+
+                using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+                request.Headers.Add("Client-Id", settings.ClientId);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                using var response = await httpClient.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    logger.LogError("Échec de la récupération des utilisateurs Twitch. Statut HTTP : {StatusCode}", response.StatusCode);
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    {
+                        _cachedToken = null;
+                        _tokenExpiresAt = DateTimeOffset.MinValue;
+                    }
+                    continue;
+                }
+
+                var content = await response.Content.ReadAsStringAsync(ct);
+                var usersResponse = JsonSerializer.Deserialize<HelixUsersResponse>(content);
+                if (usersResponse?.Data == null) continue;
+
+                foreach (var u in usersResponse.Data)
+                {
+                    var userInfo = new TwitchUserInfo(u.Id, u.Login, u.DisplayName, u.ProfileImageUrl);
+                    results.Add(userInfo);
+
+                    _userIdCache[u.Login] = u.Id;
+                    if (!string.IsNullOrWhiteSpace(u.ProfileImageUrl))
+                    {
+                        _avatarCache[u.Login] = (u.ProfileImageUrl, now);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erreur lors de la récupération des utilisateurs Twitch.");
+            }
+        }
+
+        return results;
+    }
+
+    public async Task<string?> GetUserIdAsync(string userLogin, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userLogin)) return null;
+
+        var clean = userLogin.Trim();
+        if (_userIdCache.TryGetValue(clean, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        var users = await GetUsersByLoginAsync([clean], ct);
+        var found = users.FirstOrDefault(u => string.Equals(u.Login, clean, StringComparison.OrdinalIgnoreCase));
+        return found?.Id;
+    }
+
     public async Task<string?> GetUserProfileImageUrlAsync(string userLogin, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userLogin)) return null;
 
+        var clean = userLogin.Trim();
         var now = timeProvider.GetUtcNow();
-        if (_avatarCache.TryGetValue(userLogin, out var cached) && now - cached.CachedAt < TimeSpan.FromHours(1))
+        if (_avatarCache.TryGetValue(clean, out var cached) && now - cached.CachedAt < TimeSpan.FromHours(1))
         {
             return cached.Url;
         }
 
-        // Nettoyage préventif du cache d'avatars si nécessaire
-        if (_avatarCache.Count > 500)
+        PruneAvatarCacheIfNeeded(now);
+
+        var users = await GetUsersByLoginAsync([clean], ct);
+        var user = users.FirstOrDefault(u => string.Equals(u.Login, clean, StringComparison.OrdinalIgnoreCase));
+        return user?.ProfileImageUrl;
+    }
+
+    public async Task<TwitchSubscriptionResult> CreateEventSubSubscriptionAsync(
+        string sessionId,
+        string eventType,
+        string broadcasterUserId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
         {
-            var expiredKeys = _avatarCache
-                .Where(kv => now - kv.Value.CachedAt >= TimeSpan.FromHours(1))
-                .Select(kv => kv.Key)
-                .ToList();
-
-            foreach (var key in expiredKeys)
-            {
-                _avatarCache.TryRemove(key, out _);
-            }
-
-            if (_avatarCache.Count > 1000)
-            {
-                _avatarCache.Clear();
-            }
+            return new TwitchSubscriptionResult(false, null, "L'identifiant de session WebSocket est requis.");
+        }
+        if (string.IsNullOrWhiteSpace(eventType))
+        {
+            return new TwitchSubscriptionResult(false, null, "Le type d'événement EventSub est requis.");
+        }
+        if (string.IsNullOrWhiteSpace(broadcasterUserId))
+        {
+            return new TwitchSubscriptionResult(false, null, "L'identifiant Twitch du diffuseur est requis.");
         }
 
         var settings = configService.GetSettings();
         if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
         {
-            return null;
+            return new TwitchSubscriptionResult(false, null, "Identifiants Twitch non configurés.");
         }
 
         var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
-        if (string.IsNullOrEmpty(token)) return null;
+        if (string.IsNullOrEmpty(token))
+        {
+            return new TwitchSubscriptionResult(false, null, "Impossible d'obtenir un token d'accès Twitch.");
+        }
 
         try
         {
-            var requestUri = $"https://api.twitch.tv/helix/users?login={Uri.EscapeDataString(userLogin.Trim())}";
-            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            var payload = new EventSubSubscriptionRequest(
+                Type: eventType,
+                Version: "1",
+                Condition: new Dictionary<string, string> { ["broadcaster_user_id"] = broadcasterUserId },
+                Transport: new EventSubTransportRequest("websocket", sessionId)
+            );
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.twitch.tv/helix/eventsub/subscriptions");
+            request.Headers.Add("Client-Id", settings.ClientId);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            using var response = await httpClient.SendAsync(request, ct);
+            if (response.StatusCode == HttpStatusCode.Accepted || response.StatusCode == HttpStatusCode.OK)
+            {
+                var content = await response.Content.ReadAsStringAsync(ct);
+                var subResponse = JsonSerializer.Deserialize<HelixSubscriptionsResponse>(content);
+                var subId = subResponse?.Data?.FirstOrDefault()?.Id;
+                logger.LogInformation("Souscription EventSub '{EventType}' créée avec succès pour broadcaster {UserId} (Sub ID: {SubId}).", eventType, broadcasterUserId, subId);
+                return new TwitchSubscriptionResult(true, subId, null);
+            }
+
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                logger.LogInformation("Souscription EventSub '{EventType}' existe déjà pour broadcaster {UserId}.", eventType, broadcasterUserId);
+                return new TwitchSubscriptionResult(true, null, "Souscription déjà active.");
+            }
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _cachedToken = null;
+                _tokenExpiresAt = DateTimeOffset.MinValue;
+            }
+
+            var errorBody = await response.Content.ReadAsStringAsync(ct);
+            logger.LogError("Échec de création de la souscription EventSub '{EventType}' ({StatusCode}) : {ErrorBody}", eventType, response.StatusCode, errorBody);
+            return new TwitchSubscriptionResult(false, null, $"Erreur HTTP {response.StatusCode} : {errorBody}");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Exception lors de la création de la souscription EventSub '{EventType}' pour broadcaster {UserId}.", eventType, broadcasterUserId);
+            return new TwitchSubscriptionResult(false, null, ex.Message);
+        }
+    }
+
+    public async Task<bool> DeleteEventSubSubscriptionAsync(string subscriptionId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(subscriptionId)) return false;
+
+        var settings = configService.GetSettings();
+        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        {
+            return false;
+        }
+
+        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        if (string.IsNullOrEmpty(token)) return false;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, $"https://api.twitch.tv/helix/eventsub/subscriptions?id={Uri.EscapeDataString(subscriptionId)}");
             request.Headers.Add("Client-Id", settings.ClientId);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using var response = await httpClient.SendAsync(request, ct);
-            if (!response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
-                {
-                    _cachedToken = null;
-                    _tokenExpiresAt = DateTimeOffset.MinValue;
-                }
-                return null;
+                logger.LogInformation("Souscription EventSub {SubId} supprimée avec succès.", subscriptionId);
+                return true;
             }
 
-            var content = await response.Content.ReadAsStringAsync(ct);
-            var usersResponse = JsonSerializer.Deserialize<HelixUsersResponse>(content);
-            var user = usersResponse?.Data?.FirstOrDefault();
-            if (user != null && !string.IsNullOrWhiteSpace(user.ProfileImageUrl))
-            {
-                _avatarCache[userLogin] = (user.ProfileImageUrl, now);
-                return user.ProfileImageUrl;
-            }
+            logger.LogWarning("Échec de suppression de la souscription EventSub {SubId}. Statut : {StatusCode}", subscriptionId, response.StatusCode);
+            return false;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors de la récupération de la photo de profil Twitch pour {UserLogin}", userLogin);
+            logger.LogError(ex, "Erreur lors de la suppression de la souscription EventSub {SubId}.", subscriptionId);
+            return false;
+        }
+    }
+
+    private void PruneAvatarCacheIfNeeded(DateTimeOffset now)
+    {
+        if (_avatarCache.Count <= 500) return;
+
+        var expiredKeys = _avatarCache
+            .Where(kv => now - kv.Value.CachedAt >= TimeSpan.FromHours(1))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        foreach (var key in expiredKeys)
+        {
+            _avatarCache.TryRemove(key, out _);
         }
 
-        return null;
+        if (_avatarCache.Count > 1000)
+        {
+            _avatarCache.Clear();
+        }
     }
 
     private async Task<string?> GetValidAccessTokenAsync(string clientId, string clientSecret, CancellationToken ct)
@@ -251,5 +417,32 @@ public class TwitchApiClient(
         [property: JsonPropertyName("login")] string Login,
         [property: JsonPropertyName("display_name")] string DisplayName,
         [property: JsonPropertyName("profile_image_url")] string ProfileImageUrl
+    );
+
+    private sealed record EventSubSubscriptionRequest(
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("version")] string Version,
+        [property: JsonPropertyName("condition")] Dictionary<string, string> Condition,
+        [property: JsonPropertyName("transport")] EventSubTransportRequest Transport
+    );
+
+    private sealed record EventSubTransportRequest(
+        [property: JsonPropertyName("method")] string Method,
+        [property: JsonPropertyName("session_id")] string SessionId
+    );
+
+    private sealed record HelixSubscriptionsResponse(
+        [property: JsonPropertyName("data")] List<HelixSubscriptionItem>? Data,
+        [property: JsonPropertyName("total")] int? Total,
+        [property: JsonPropertyName("total_cost")] int? TotalCost,
+        [property: JsonPropertyName("max_total_cost")] int? MaxTotalCost
+    );
+
+    private sealed record HelixSubscriptionItem(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("status")] string Status,
+        [property: JsonPropertyName("type")] string Type,
+        [property: JsonPropertyName("version")] string Version,
+        [property: JsonPropertyName("cost")] int? Cost
     );
 }

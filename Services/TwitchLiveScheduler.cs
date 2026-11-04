@@ -6,12 +6,13 @@ namespace DiscordBot.Services;
 public class TwitchLiveScheduler(
     TwitchConfigService configService,
     TwitchLiveService liveService,
+    TwitchEventSubService eventSubService,
     TimeProvider timeProvider,
     ILogger<TwitchLiveScheduler> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("Planificateur des notifications Twitch Live démarré.");
+        logger.LogInformation("Service Twitch Live démarré (Mode EventSub WebSocket).");
 
         try
         {
@@ -22,39 +23,41 @@ public class TwitchLiveScheduler(
             return;
         }
 
-        while (!stoppingToken.IsCancellationRequested)
+        var settings = configService.GetSettings();
+        if (settings.IsEnabled)
         {
-            var settings = configService.GetSettings();
-            var interval = Math.Clamp(settings.CheckIntervalSeconds, 15, 3600);
-
             try
             {
-                if (settings.IsEnabled)
-                {
-                    await liveService.CheckStreamsAsync(stoppingToken);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
+                logger.LogInformation("Démarrage du client EventSub WebSocket Twitch...");
+                await eventSubService.StartAsync(stoppingToken);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Erreur lors du cycle de vérification Twitch Live.");
+                logger.LogError(ex, "Erreur lors du démarrage d'EventSub WebSocket.");
             }
 
             try
             {
-                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(interval), timeProvider);
-                if (!await timer.WaitForNextTickAsync(stoppingToken))
-                {
-                    break;
-                }
+                logger.LogInformation("Exécution de la synchronisation initiale unique des streams Twitch...");
+                await liveService.CheckStreamsAsync(stoppingToken);
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (Exception ex)
             {
-                break;
+                logger.LogError(ex, "Erreur lors de la synchronisation initiale des streams Twitch.");
             }
+        }
+
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, timeProvider, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            logger.LogInformation("Arrêt du service Twitch Live EventSub.");
+        }
+        finally
+        {
+            await eventSubService.StopAsync(CancellationToken.None);
         }
     }
 }

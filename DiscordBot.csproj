@@ -12,6 +12,7 @@
     <PackageReference Include="dotenv.net" Version="4.2.0" />
     <PackageReference Include="Google.GenAI" Version="1.28.0" />
     <PackageReference Include="System.IO.Abstractions" Version="22.3.0" />
+    <PackageReference Include="TwitchLib.EventSub.Websockets" Version="0.8.0" />
   </ItemGroup>
 
 </Project>

@@ -7,6 +7,7 @@ using Discord.WebSocket;
 using DiscordBot.Components;
 using DiscordBot.Services;
 using dotenv.net;
+using TwitchLib.EventSub.Websockets.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
@@ -138,10 +139,12 @@ builder.Services.AddSingleton<MorningBriefingService>();
 builder.Services.AddHostedService<MorningBriefingScheduler>();
 
 // Services dédiés aux notifications Twitch Live
+builder.Services.AddTwitchLibEventSubWebsockets();
 builder.Services.AddSingleton<TwitchConfigService>();
 builder.Services.AddSingleton<TwitchStateService>();
 builder.Services.AddSingleton<TwitchApiClient>();
 builder.Services.AddSingleton<TwitchLiveService>();
+builder.Services.AddSingleton<TwitchEventSubService>();
 builder.Services.AddHostedService<TwitchLiveScheduler>();
 
 // Configuration du client Discord

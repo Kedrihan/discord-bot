@@ -5,6 +5,7 @@
 @inject TwitchConfigService ConfigService
 @inject TwitchLiveService LiveService
 @inject TwitchStateService StateService
+@inject TwitchEventSubService EventSubService
 @inject DiscordSocketClient DiscordClient
 
 <div class="container py-2" style="max-width: 1000px;">
@@ -63,12 +64,15 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Fréquence de vérification (secondes)</label>
-                    <input type="number" min="15" max="3600" step="15"
-                           class="form-control bg-dark text-light border-secondary font-monospace"
-                           @bind="settings.CheckIntervalSeconds" />
-                    <div class="form-text text-secondary small">
-                        Recommandé : 60 secondes (minimum 15s).
+                    <label class="form-label small fw-semibold text-secondary">Mode de détection</label>
+                    <div class="p-3 rounded bg-dark border border-secondary">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-lightning-charge-fill text-warning fs-5"></i>
+                            <span class="fw-bold text-light">EventSub WebSockets en temps réel</span>
+                        </div>
+                        <div class="small text-secondary">
+                            Alertes instantanées poussées par Twitch. Aucun délai ni polling périodique.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -83,6 +87,28 @@
                     </h5>
 
                     <ul class="list-group list-group-flush bg-transparent mb-3">
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                            <span>Statut EventSub (Temps réel) :</span>
+                            @if (EventSubService.IsConnected)
+                            {
+                                <span class="badge bg-success d-flex align-items-center gap-1">
+                                    <span class="spinner-grow spinner-grow-sm" style="width: 0.5rem; height: 0.5rem;" role="status"></span>
+                                    🟢 Connecté (EventSub temps réel)
+                                </span>
+                            }
+                            else if (EventSubService.Status == TwitchEventSubStatus.Connecting || EventSubService.Status == TwitchEventSubStatus.Reconnecting)
+                            {
+                                <span class="badge bg-warning text-dark">
+                                    🟡 En cours de connexion...
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">
+                                    🔴 Déconnecté
+                                </span>
+                            }
+                        </li>
                         <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
                             <span>Statut du bot Discord :</span>
                             <span class="badge @(DiscordClient.ConnectionState == Discord.ConnectionState.Connected ? "bg-success" : "bg-warning")">
@@ -321,6 +347,7 @@
     {
         settings = ConfigService.GetSettings();
         LiveService.OnLiveStatusChanged += HandleLiveStatusChanged;
+        EventSubService.OnStatusChanged += HandleEventSubStatusChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -466,6 +493,7 @@
                 {
                     try
                     {
+                        await EventSubService.ResubscribeAllAsync();
                         await LiveService.RefreshLiveStatusAsync();
                     }
                     catch
@@ -482,8 +510,24 @@
         }
     }
 
+    private bool _disposed;
+
     private async void HandleLiveStatusChanged()
     {
+        if (_disposed) return;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception)
+        {
+            // Circuit may be disconnected or component disposed
+        }
+    }
+
+    private async void HandleEventSubStatusChanged()
+    {
+        if (_disposed) return;
         try
         {
             await InvokeAsync(StateHasChanged);
@@ -496,7 +540,9 @@
 
     public void Dispose()
     {
+        _disposed = true;
         LiveService.OnLiveStatusChanged -= HandleLiveStatusChanged;
+        EventSubService.OnStatusChanged -= HandleEventSubStatusChanged;
     }
 
     private async Task CheckNowAsync()

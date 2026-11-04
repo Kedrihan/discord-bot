@@ -43,6 +43,28 @@ public class TwitchActiveStreamState
 
 public record TwitchExecutionResult(bool Success, string Message);
 
+public record TwitchUserInfo(
+    string Id,
+    string Login,
+    string DisplayName,
+    string ProfileImageUrl
+);
+
+public record TwitchSubscriptionResult(
+    bool Success,
+    string? SubscriptionId,
+    string? ErrorMessage
+);
+
+public enum TwitchEventSubStatus
+{
+    Disconnected,
+    Connecting,
+    Connected,
+    Reconnecting,
+    Error
+}
+
 public record TwitchTokenResponse(
     [property: JsonPropertyName("access_token")] string AccessToken,
     [property: JsonPropertyName("expires_in")] int ExpiresIn,
