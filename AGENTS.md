@@ -100,7 +100,7 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 
 ---
 
-### 10. Analyse du Besoin & Cadrage Interactif (Sous-Agent Dédié)
+### 10. Analyse du Besoin & Cadrage Interactif (Sous-Agent Analyste Dédié)
 * **Cadrage systématique lors de l'expression d'un nouveau besoin :**
   * Dès qu'un besoin, une nouvelle fonctionnalité ou une évolution métier est exprimé(e) par l'utilisateur, lancer systématiquement un **sous-agent d'analyse du besoin** avec un modèle Gemini adapté à la tâche (`pro` pour les besoins complexes ou réflexions d'architecture, `inherit`/`flash` pour les cadrages ciblés).
   * Le sous-agent est chargé d'examiner le contexte, d'identifier les zones d'ombre, les ambiguïtés et les cas limites.
@@ -133,5 +133,13 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
   * À la fin de tout développement ou modification de code (après validation du build et des tests unitaires, et avant validation finale et commit), lancer systématiquement un **sous-agent d'audit de cybersécurité** avec un modèle Gemini adapté (`pro` pour les analyses approfondies ou changements structurants, `inherit`/`flash` pour les revues ciblées).
   * Le sous-agent passe en revue le code modifié ou introduit, les flux de données, les entrées utilisateur, la gestion des secrets/tokens et les dépendances.
   * **Vérification des failles CVE :** Il contrôle systématiquement les vulnérabilités et CVEs connues sur l'ensemble des dépendances et packages NuGet (notamment via `dotnet list package --vulnerable`) ainsi que sur l'image de base Docker pour s'assurer qu'aucune brèche de sécurité connue ne subsiste.
+  * **Qualification pragmatique des CVEs :** Si une vulnérabilité concerne une dépendance transitive pour laquelle aucun patch officiel n'est encore disponible, le sous-agent évalue son exploitabilité réelle dans le contexte d'exécution du bot. Si le vecteur d'attaque n'est pas atteignable, il documente l'analyse et préconise une mitigation sans bloquer la livraison de façon bloquante.
   * Il traque toute vulnérabilité potentielle (injections, fuites de secrets ou données sensibles, SSRF, DoS, failles de désérialisation, contournements d'autorisation/authentification).
   * Il consigne ses conclusions et apporte ou préconise les correctifs nécessaires pour pallier tout risque avant la livraison.
+
+---
+
+### 14. Proportionnalité & Fast-Track pour les Micro-Tâches
+* **Principe de proportionnalité :**
+  * Le pipeline complet multi-agents (Cadrage ➡️ Dev ➡️ Build/TU ➡️ Cyber) s'applique aux fonctionnalités, refactorisations et évolutions métier.
+  * Pour les **micro-tâches triviales** (correction de fautes d'orthographe, ajustement cosmétique CSS de 2 lignes, libellés statiques sans logique métier), le processus peut emprunter un **fast-track** allégé : traitement direct avec validation de compilation et des tests, sans mobiliser lourdement l'intégralité de la chaîne d'analyse et d'audit, évitant ainsi la latence et la surconsommation de tokens.
