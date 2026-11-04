@@ -113,5 +113,6 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 * **Audit de sécurité en fin de développement :**
   * À la fin de tout développement ou modification de code (avant validation finale et commit), lancer systématiquement un **sous-agent d'audit de cybersécurité** avec un modèle Gemini adapté (`pro` pour les analyses approfondies ou changements structurants, `inherit`/`flash` pour les revues ciblées).
   * Le sous-agent passe en revue le code modifié ou introduit, les flux de données, les entrées utilisateur, la gestion des secrets/tokens et les dépendances.
+  * **Vérification des failles CVE :** Il contrôle systématiquement les vulnérabilités et CVEs connues sur l'ensemble des dépendances et packages NuGet (notamment via `dotnet list package --vulnerable`) ainsi que sur l'image de base Docker pour s'assurer qu'aucune brèche de sécurité connue ne subsiste.
   * Il traque toute vulnérabilité potentielle (injections, fuites de secrets ou données sensibles, SSRF, DoS, failles de désérialisation, contournements d'autorisation/authentification).
   * Il consigne ses conclusions et apporte ou préconise les correctifs nécessaires pour pallier tout risque avant la livraison.
