@@ -181,7 +181,7 @@ app.MapGet("/login", () =>
     {
         return Results.Redirect("/?oauth=not_configured");
     }
-    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, ["Discord"]);
+    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/dashboard" }, ["Discord"]);
 });
 
 app.MapGet("/logout", async (HttpContext context) =>

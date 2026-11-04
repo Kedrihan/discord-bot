@@ -1,24 +1,32 @@
 @inherits LayoutComponentBase
-@inject IConfiguration Configuration
 
 <nav class="navbar navbar-expand-lg navbar-dark px-3 mb-4">
     <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/">
-            <i class="bi bi-discord text-primary fs-3"></i>
-            <span>DiscordBot Admin</span>
-        </a>
-        
-        <div class="navbar-nav flex-row gap-3 me-auto ms-3 d-none d-md-flex">
-            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
-                <i class="bi bi-speedometer2 me-1"></i> Dashboard
-            </NavLink>
-            <NavLink class="nav-link" href="/briefing">
-                <i class="bi bi-bicycle me-1"></i> Briefing Matin
-            </NavLink>
-            <NavLink class="nav-link" href="/settings">
-                <i class="bi bi-gear me-1"></i> Veille Techno
-            </NavLink>
-        </div>
+        <AuthorizeView Policy="AdminOnly">
+            <Authorized>
+                <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/dashboard">
+                    <i class="bi bi-discord text-primary fs-3"></i>
+                    <span>DiscordBot Admin</span>
+                </a>
+                <div class="navbar-nav flex-row gap-3 me-auto ms-3 d-none d-md-flex">
+                    <NavLink class="nav-link" href="/dashboard" Match="NavLinkMatch.All">
+                        <i class="bi bi-speedometer2 me-1"></i> Dashboard
+                    </NavLink>
+                    <NavLink class="nav-link" href="/briefing">
+                        <i class="bi bi-bicycle me-1"></i> Briefing Matin
+                    </NavLink>
+                    <NavLink class="nav-link" href="/settings">
+                        <i class="bi bi-gear me-1"></i> Veille Techno
+                    </NavLink>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/">
+                    <i class="bi bi-discord text-primary fs-3"></i>
+                    <span>DiscordBot Admin</span>
+                </a>
+            </NotAuthorized>
+        </AuthorizeView>
 
         <div class="navbar-nav ms-auto flex-row align-items-center gap-3">
             <AuthorizeView>
