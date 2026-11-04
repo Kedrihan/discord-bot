@@ -100,45 +100,12 @@ These rules are strict and must be followed by all developers and AI agents work
 
 ---
 
-### 10. Requirements Analysis & Interactive Scoping (Dedicated Analyst Subagent)
-* **Systematic scoping on new requirements:**
-  * Whenever a new requirement, feature, or business rule is requested by the user, systematically invoke an **interactive analysis subagent** using the **Flash model** (`flash` or `inherit`).
-  * Adjust the thinking level accordingly: deep reflection for architectural choices or complex requirements; standard reflection for focused inquiries.
-  * The subagent inspects the context, identifies blind spots, ambiguities, and edge cases.
-  * It proactively asks clarifying questions (via `ask_question` or direct chat) to define scope before implementation starts.
-  * Never begin writing non-trivial code without user alignment on requirements and plan.
-
----
-
-### 11. Implementation & Development (Dedicated Developer Subagent)
-* **Systematic delegation to a developer subagent:**
-  * All feature developments, refactorings, or bug fixes must be executed by a **dedicated developer subagent**, always using the **Flash model** (`flash` or `inherit`).
-  * Calibrate the thinking level carefully: deep reflection for sensitive algorithms, major refactoring, or architectural work; direct reflection for standard code updates.
-  * The developer subagent strictly enforces all project coding directives (Primary Constructors, TimeProvider, IFileSystem, strongly typed models, Early Return, NUnit).
-
----
-
-### 12. Build & Unit Test Verification (Dedicated Validator Subagent)
-* **Mandatory automatic verification before security review:**
-  * Immediately after code changes or feature implementations, launch a **technical validation subagent** using the **Flash model** (`flash` or `inherit`), adjusting thinking level to the complexity of any compilation or test failure.
-  * The subagent runs the solution build and executes the full NUnit test suite.
-  * In case of build errors, blocking warnings, or test failures, the subagent diagnoses root causes and **directly applies fixes** to code or tests until achieving a 100% green state.
-  * Cybersecurity review must only run after this verification step has succeeded.
-
----
-
-### 13. Systematic Cybersecurity Review (Dedicated Security Subagent)
-* **End-of-development security audit:**
-  * At the end of every development (after build and test suite pass, before final delivery and commit), launch a **cybersecurity subagent** using the **Flash model** (`flash` or `inherit`) with a high thinking level.
-  * The subagent audits modified code, data flows, user inputs, secret/token management, and dependencies.
-  * **CVE vulnerability scanning:** Systematically inspect NuGet packages for known CVEs (e.g., `dotnet list package --vulnerable`) and verify the base Docker image security posture.
-  * **Pragmatic CVE qualification:** If a vulnerability affects a transitive dependency with no official upstream patch available, evaluate real-world exploitability in this bot's runtime context. If unreachable, document the finding and prescribe mitigations without needlessly blocking delivery.
-  * Hunt for vulnerabilities (injections, credential leaks, SSRF, DoS, insecure deserialization, authorization bypasses).
-  * Report findings and implement or advise fixes before shipping.
-
----
-
-### 14. Proportionality & Fast-Track for Micro-Tasks
-* **Principle of proportionality:**
-  * The full multi-agent pipeline (Scoping ➡️ Dev ➡️ Build/Test ➡️ Security) applies to features, refactorings, and domain evolutions.
-  * For **trivial micro-tasks** (typo fixes, 2-line CSS tweaks, static label updates without business logic), use a lightweight **fast-track**: direct implementation with build and test validation, bypassing heavy scoping and security overhead to minimize latency and token usage.
+### 10. Multi-Agent Development Pipeline (`/forge`)
+* For new features, complex domain evolutions, or major refactorings, activate the `/forge` skill.
+* The `/forge` skill coordinates the 4-stage pipeline sequentially:
+  1. **Scoping:** Interactive requirements analysis and edge-case resolution (Analyst subagent).
+  2. **Development:** Implementation adhering to all coding standards (Developer subagent).
+  3. **Technical Validation:** Automated build and full NUnit test execution with self-healing (Validator subagent).
+  4. **Security Audit:** Vulnerability scanning (CVEs) and defensive review (Cybersecurity subagent).
+* All subagents must use the **Flash** model (`flash` or `inherit`) with dynamic reflection levels.
+* For **micro-tasks** (typos, 2-line styling tweaks, static string updates), apply changes directly with build and test validation without launching the full `/forge` pipeline.
