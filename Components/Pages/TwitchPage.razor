@@ -18,7 +18,7 @@
             <p class="text-secondary mb-0">Alertes Discord en temps réel lorsqu'un streamer passe en direct avec suppression automatique du message hors ligne.</p>
         </div>
         <div class="form-check form-switch fs-4">
-            <input class="form-check-input" type="checkbox" id="enableSwitch" @bind="settings.IsEnabled">
+            <input class="form-check-input" type="checkbox" id="enableSwitch" checked="@settings.IsEnabled" @onchange="ToggleGlobalEnabledAsync">
         </div>
     </div>
 
@@ -220,7 +220,7 @@
 
                         <div class="d-flex gap-2">
                             <button class="btn btn-sm btn-outline-secondary" @onclick="CancelForm">Annuler</button>
-                            <button class="btn btn-sm btn-primary" style="background-color: #9146FF; border-color: #9146FF;" @onclick="SaveChannelForm">
+                            <button class="btn btn-sm btn-primary" style="background-color: #9146FF; border-color: #9146FF;" @onclick="SaveChannelFormAsync">
                                 Enregistrer la chaîne
                             </button>
                         </div>
@@ -291,7 +291,7 @@
                                 </td>
                                 <td class="text-center">
                                     <div class="form-check form-switch d-inline-block">
-                                        <input class="form-check-input" type="checkbox" @bind="ch.IsEnabled" />
+                                        <input class="form-check-input" type="checkbox" checked="@ch.IsEnabled" @onchange="() => ToggleChannelEnabledAsync(ch)" />
                                     </div>
                                 </td>
                                 <td class="text-end">
@@ -312,7 +312,7 @@
                                         <button class="btn btn-outline-warning" title="Modifier" @onclick="() => EditChannel(ch)">
                                             <i class="bi bi-pencil"></i>
                                         </button>
-                                        <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannel(ch)">
+                                        <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannelAsync(ch)">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -400,7 +400,19 @@
         formCustomMessage += (string.IsNullOrEmpty(formCustomMessage) ? "" : " ") + token;
     }
 
-    private void SaveChannelForm()
+    private async Task ToggleGlobalEnabledAsync()
+    {
+        settings.IsEnabled = !settings.IsEnabled;
+        await SaveSettingsAsync();
+    }
+
+    private async Task ToggleChannelEnabledAsync(TrackedTwitchChannel channel)
+    {
+        channel.IsEnabled = !channel.IsEnabled;
+        await SaveSettingsAsync();
+    }
+
+    private async Task SaveChannelFormAsync()
     {
         var rawUsername = formTwitchUsername.Trim();
         if (rawUsername.StartsWith("https://twitch.tv/", StringComparison.OrdinalIgnoreCase))
@@ -466,14 +478,16 @@
         }
 
         CancelForm();
-        feedbackMessage = "Chaîne enregistrée avec succès. N'oubliez pas d'enregistrer la configuration globale.";
+        await SaveSettingsAsync();
+        feedbackMessage = $"Chaîne '{rawUsername}' enregistrée et sauvegardée avec succès !";
         isSuccessFeedback = true;
     }
 
-    private void RemoveChannel(TrackedTwitchChannel channel)
+    private async Task RemoveChannelAsync(TrackedTwitchChannel channel)
     {
         settings.Channels.Remove(channel);
-        feedbackMessage = $"Chaîne '{channel.TwitchUsername}' supprimée.";
+        await SaveSettingsAsync();
+        feedbackMessage = $"Chaîne '{channel.TwitchUsername}' supprimée avec succès.";
         isSuccessFeedback = true;
     }
 
