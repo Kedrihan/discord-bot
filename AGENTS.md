@@ -102,7 +102,8 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 
 ### 10. Analyse du Besoin & Cadrage Interactif (Sous-Agent Analyste Dédié)
 * **Cadrage systématique lors de l'expression d'un nouveau besoin :**
-  * Dès qu'un besoin, une nouvelle fonctionnalité ou une évolution métier est exprimé(e) par l'utilisateur, lancer systématiquement un **sous-agent d'analyse du besoin** avec un modèle Gemini adapté à la tâche (`pro` pour les besoins complexes ou réflexions d'architecture, `inherit`/`flash` pour les cadrages ciblés).
+  * Dès qu'un besoin, une nouvelle fonctionnalité ou une évolution métier est exprimé(e) par l'utilisateur, lancer systématiquement un **sous-agent d'analyse du besoin** avec le **modèle Flash** (`flash` ou `inherit`).
+  * Le niveau de réflexion (*thinking level*) est ajusté selon la tâche : réflexion approfondie pour les réflexions architecturales et besoins complexes, réflexion standard pour les besoins ciblés.
   * Le sous-agent est chargé d'examiner le contexte, d'identifier les zones d'ombre, les ambiguïtés et les cas limites.
   * Il pose les questions pertinentes de façon interactive (notamment via `ask_question` ou questions directes) pour affiner le périmètre avant toute implémentation.
   * Ne pas démarrer le développement d'une fonctionnalité non triviale sans cette étape de clarification et validation du plan avec l'utilisateur.
@@ -111,17 +112,15 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 
 ### 11. Implémentation & Développement (Sous-Agent Développeur Dédié)
 * **Délégation systématique à un sous-agent de développement :**
-  * Tous les développements, ajouts de fonctionnalités, refactorisations ou corrections de bugs sont systématiquement exécutés par un **sous-agent développeur dédié**.
-  * Le niveau de réflexion et le modèle Gemini sont choisis de façon cohérente avec la complexité du besoin :
-    * Modèle `pro` (avec réflexion approfondie) pour les architectures complexes, refontes transverses, logiques métier pointues ou intégrations délicates.
-    * Modèle `inherit` ou `flash` pour les implémentations standards, ciblées ou les modifications délimitées.
+  * Tous les développements, ajouts de fonctionnalités, refactorisations ou corrections de bugs sont systématiquement exécutés par un **sous-agent développeur dédié**, toujours avec le **modèle Flash** (`flash` ou `inherit`).
+  * Le niveau de réflexion est calibré avec soin : réflexion poussée pour les logiques algorithmiques, refontes ou architectures sensibles ; réflexion directe pour les développements standards.
   * Le sous-agent développeur veille à respecter l'ensemble des directives de codage du projet (Primary Constructors, TimeProvider, IFileSystem, modèles fortement typés, Early Return, NUnit).
 
 ---
 
 ### 12. Validation du Build & des Tests Unitaires (Sous-Agent Validateur Dédié)
 * **Vérification automatique préalable avant la cybersécurité :**
-  * Dès la fin d'un développement ou d'une modification de code, lancer systématiquement un **sous-agent de validation technique** avec un modèle Gemini adapté (`flash`/`inherit` pour les vérifications standards, `pro` pour les résolutions d'erreurs complexes).
+  * Dès la fin d'un développement ou d'une modification de code, lancer systématiquement un **sous-agent de validation technique** avec le **modèle Flash** (`flash` ou `inherit`), avec un niveau de réflexion adapté à la complexité des erreurs rencontrées.
   * Le sous-agent exécute la compilation de la solution et lance l'intégralité de la suite de tests unitaires (NUnit).
   * En cas d'erreur de build, d'avertissement bloquant ou de test unitaire en échec, le sous-agent analyse les causes racines et **applique immédiatement les corrections nécessaires** sur le code ou les tests jusqu'à obtenir un état 100% vert.
   * La revue de cybersécurité ne peut être déclenchée qu'une fois cette étape de build et de tests unitaires validée avec succès.
@@ -130,7 +129,7 @@ Ces règles sont strictes et doivent être respectées par tous les développeur
 
 ### 13. Revue de Cybersécurité Systématique (Sous-Agent Cybersécurité Dédié)
 * **Audit de sécurité en fin de développement :**
-  * À la fin de tout développement ou modification de code (après validation du build et des tests unitaires, et avant validation finale et commit), lancer systématiquement un **sous-agent d'audit de cybersécurité** avec un modèle Gemini adapté (`pro` pour les analyses approfondies ou changements structurants, `inherit`/`flash` pour les revues ciblées).
+  * À la fin de tout développement ou modification de code (après validation du build et des tests unitaires, et avant validation finale et commit), lancer systématiquement un **sous-agent d'audit de cybersécurité** avec le **modèle Flash** (`flash` ou `inherit`) et un niveau de réflexion élevé pour traquer minutieusement toute faille potentielle.
   * Le sous-agent passe en revue le code modifié ou introduit, les flux de données, les entrées utilisateur, la gestion des secrets/tokens et les dépendances.
   * **Vérification des failles CVE :** Il contrôle systématiquement les vulnérabilités et CVEs connues sur l'ensemble des dépendances et packages NuGet (notamment via `dotnet list package --vulnerable`) ainsi que sur l'image de base Docker pour s'assurer qu'aucune brèche de sécurité connue ne subsiste.
   * **Qualification pragmatique des CVEs :** Si une vulnérabilité concerne une dépendance transitive pour laquelle aucun patch officiel n'est encore disponible, le sous-agent évalue son exploitabilité réelle dans le contexte d'exécution du bot. Si le vecteur d'attaque n'est pas atteignable, il documente l'analyse et préconise une mitigation sans bloquer la livraison de façon bloquante.
