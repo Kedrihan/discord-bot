@@ -32,10 +32,6 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpClient();
-builder.Services.AddHttpClient("UptimeMonitor", client =>
-{
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("DiscordBot-UptimeMonitor/1.0");
-});
 
 // Configuration de l'authentification Discord OAuth2
 var clientId = builder.Configuration["DISCORD_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID");
@@ -153,13 +149,6 @@ builder.Services.AddHostedService<TwitchLiveScheduler>();
 builder.Services.AddSingleton<TwitchClipHistoryService>();
 builder.Services.AddSingleton<TwitchClipService>();
 builder.Services.AddHostedService<TwitchClipScheduler>();
-
-// Services dédiés à la Surveillance d'Uptime et Observabilité
-builder.Services.AddSingleton<UptimeConfigService>();
-builder.Services.AddSingleton<UptimeStateService>();
-builder.Services.AddSingleton<SystemHealthService>();
-builder.Services.AddSingleton<UptimeMonitorService>();
-builder.Services.AddHostedService<UptimeMonitorScheduler>();
 
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig

@@ -52,20 +52,6 @@ public class SecurityAuthorizationTests
     }
 
     [Test]
-    public void MonitoringPage_ShouldHave_AdminOnly_AuthorizeAttribute_And_MonitoringRoute()
-    {
-        var type = typeof(MonitoringPage);
-
-        var routeAttr = type.GetCustomAttribute<RouteAttribute>();
-        routeAttr.Should().NotBeNull();
-        routeAttr!.Template.Should().Be("/monitoring");
-
-        var authAttrs = type.GetCustomAttributes<AuthorizeAttribute>().ToList();
-        authAttrs.Should().NotBeEmpty();
-        authAttrs.Should().Contain(a => a.Policy == "AdminOnly");
-    }
-
-    [Test]
     public void LandingPage_ShouldBePublicRoot_And_HaveNoAuthorizeAttribute()
     {
         var type = typeof(LandingPage);
