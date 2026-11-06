@@ -1,0 +1,593 @@
+@page "/monitoring"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SystemHealthService HealthService
+@inject UptimeMonitorService MonitorService
+@inject UptimeConfigService ConfigService
+@inject UptimeStateService StateService
+@inject DiscordSocketClient DiscordClient
+
+<div class="container py-2" style="max-width: 1100px;">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bi bi-activity text-info me-2"></i>Monitoring &amp; Observabilité
+            </h3>
+            <p class="text-secondary mb-0">Surveillance d'uptime des cibles réseau, ping Box, métriques système et santé du conteneur.</p>
+        </div>
+        <div class="form-check form-switch fs-4">
+            <input class="form-check-input" type="checkbox" id="enableUptimeSwitch"
+                   checked="@settings.IsEnabled" @onchange="ToggleGlobalEnabledAsync" title="Activer / Désactiver la surveillance">
+        </div>
+    </div>
+
+    <!-- Alertes de feedback -->
+    @if (!string.IsNullOrEmpty(feedbackMessage))
+    {
+        <div class="alert @(isSuccessFeedback ? "alert-success" : "alert-danger") alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
+            <i class="bi @(isSuccessFeedback ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") fs-5"></i>
+            <div class="flex-grow-1">@feedbackMessage</div>
+            <button type="button" class="btn-close" @onclick="() => feedbackMessage = null"></button>
+        </div>
+    }
+
+    <!-- 1. KPIs Système Conteneur -->
+    @{
+        var metrics = HealthService.GetSystemMetrics();
+        var wsMb = metrics.WorkingSetBytes / (1024.0 * 1024.0);
+    }
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-sm-6">
+            <div class="card p-3 shadow-sm h-100 border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-secondary small text-uppercase fw-semibold">Mémoire Vive</span>
+                    <i class="bi bi-memory fs-4 text-warning"></i>
+                </div>
+                <h4 class="mb-0 fw-bold">@wsMb.ToString("F1") Mo</h4>
+                <div class="small text-secondary mt-1">WorkingSet processus</div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card p-3 shadow-sm h-100 border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-secondary small text-uppercase fw-semibold">Uptime Bot</span>
+                    <i class="bi bi-clock-history fs-4 text-success"></i>
+                </div>
+                <h4 class="mb-0 fw-bold font-monospace text-success">@UptimeMonitorService.FormatDuration(metrics.Uptime)</h4>
+                <div class="small text-secondary mt-1">Depuis le démarrage</div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card p-3 shadow-sm h-100 border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-secondary small text-uppercase fw-semibold">Latence Gateway</span>
+                    <i class="bi bi-broadcast fs-4 text-primary"></i>
+                </div>
+                <h4 class="mb-0 fw-bold font-monospace">@(DiscordClient.Latency >= 0 ? $"{DiscordClient.Latency} ms" : "—")</h4>
+                <div class="small text-secondary mt-1">WebSocket Discord</div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6">
+            <div class="card p-3 shadow-sm h-100 border-secondary">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-secondary small text-uppercase fw-semibold">Threads Actifs</span>
+                    <i class="bi bi-cpu fs-4 text-info"></i>
+                </div>
+                <h4 class="mb-0 fw-bold font-monospace">@metrics.ThreadCount</h4>
+                <div class="small text-secondary mt-1">ThreadPool .NET 10</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Santé des Services Internes -->
+    <div class="card p-4 shadow-sm border-secondary mb-4">
+        <h5 class="fw-bold mb-3">
+            <i class="bi bi-heart-pulse-fill text-danger me-2"></i>État des Services Internes
+        </h5>
+        <div class="row g-3">
+            @foreach (var s in HealthService.GetServicesHealth())
+            {
+                <div class="col-md-4 col-sm-6">
+                    <div class="p-3 rounded bg-dark border @(s.IsHealthy ? "border-success-subtle" : "border-danger-subtle")">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-semibold">@s.Name</span>
+                            @if (s.IsHealthy)
+                            {
+                                <span class="badge bg-success-subtle text-success border border-success">En ligne</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger-subtle text-danger border border-danger">Inactif</span>
+                            }
+                        </div>
+                        <div class="small text-secondary">@s.StatusText</div>
+                        @if (!string.IsNullOrEmpty(s.Details))
+                        {
+                            <div class="small text-muted font-monospace mt-1" style="font-size: 0.75rem;">@s.Details</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- 3. Cibles Réseau Surveillées -->
+    <div class="card p-4 shadow-sm border-secondary mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0">
+                <i class="bi bi-router-fill text-primary me-2"></i>Cibles Réseau &amp; Ping Box
+            </h5>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                        disabled="@isCheckingAll" @onclick="CheckAllNowAsync">
+                    @if (isCheckingAll)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Vérification...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-arrow-repeat"></i>
+                        <span>Tester toutes les cibles</span>
+                    }
+                </button>
+                @if (!isAddingTarget && editingTarget == null)
+                {
+                    <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" @onclick="StartAddTarget">
+                        <i class="bi bi-plus-lg"></i>
+                        <span>Ajouter une cible</span>
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Formulaire Ajout / Édition -->
+        @if (isAddingTarget || editingTarget != null)
+        {
+            <div class="card p-3 mb-4 bg-dark border-primary">
+                <h6 class="fw-bold mb-3 text-info">
+                    <i class="bi @(editingTarget != null ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
+                    @(editingTarget != null ? "Modifier la cible" : "Nouvelle cible réseau")
+                </h6>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-semibold text-secondary">Nom descriptif</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary"
+                               placeholder="ex: Freebox Delta, Mon Serveur..."
+                               @bind="formName" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-secondary">Protocole</label>
+                        <select class="form-select bg-dark text-light border-secondary" @bind="formProtocol">
+                            <option value="@TargetProtocol.Http">HTTP / HTTPS</option>
+                            <option value="@TargetProtocol.Tcp">TCP Connect</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-5">
+                        <label class="form-label small fw-semibold text-secondary">Hôte ou URL</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                               placeholder="@(formProtocol == TargetProtocol.Http ? "http://mafreebox.freebox.fr/api_version" : "192.168.1.1 ou mondomaine.com")"
+                               @bind="formHostOrUrl" />
+                    </div>
+
+                    @if (formProtocol == TargetProtocol.Tcp)
+                    {
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold text-secondary">Port TCP</label>
+                            <input type="number" class="form-control bg-dark text-light border-secondary font-monospace"
+                                   placeholder="80, 443, 22, 25565..."
+                                   min="1" max="65535"
+                                   @bind="formPort" />
+                        </div>
+                    }
+
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-secondary">Timeout (s)</label>
+                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                               min="1" max="60"
+                               @bind="formTimeoutSeconds" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-secondary">Seuil d'échecs (Anti-flapping)</label>
+                        <input type="number" class="form-control bg-dark text-light border-secondary"
+                               min="1" max="10"
+                               @bind="formFailureThreshold" />
+                    </div>
+
+                    <div class="col-md-3">
+                        <label class="form-label small fw-semibold text-secondary">Salon Discord d'alerte (Optionnel)</label>
+                        <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                               placeholder="ID du salon (laisser vide = global)"
+                               @bind="formAlertChannelId" />
+                    </div>
+
+                    <div class="col-12 d-flex justify-content-end gap-2 mt-3 pt-2 border-top border-secondary">
+                        <button class="btn btn-sm btn-secondary" @onclick="CancelTargetEdit">Annuler</button>
+                        <button class="btn btn-sm btn-primary" @onclick="SaveTargetAsync">
+                            <i class="bi bi-check-lg me-1"></i>Enregistrer la cible
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Tableau des Cibles -->
+        @if (settings.Targets.Count == 0)
+        {
+            <div class="text-center py-4 text-secondary">
+                <i class="bi bi-hdd-network fs-2 d-block mb-2 text-secondary"></i>
+                <p class="mb-0">Aucune cible de surveillance configurée pour le moment.</p>
+                <small>Cliquez sur "Ajouter une cible" pour configurer le ping Box ou d'autres services.</small>
+            </div>
+        }
+        else
+        {
+            var states = StateService.GetState().TargetStates.ToDictionary(s => s.TargetId);
+
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Protocole</th>
+                            <th>Cible / Port</th>
+                            <th>Statut</th>
+                            <th>Latence</th>
+                            <th>Dernier test</th>
+                            <th>Alerte</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var target in settings.Targets)
+                        {
+                            states.TryGetValue(target.Id, out var state);
+                            var status = state?.Status ?? TargetStatus.Pending;
+
+                            <tr class="@(!target.IsEnabled ? "opacity-50" : "")">
+                                <td class="fw-semibold">
+                                    @target.Name
+                                    @if (!target.IsEnabled)
+                                    {
+                                        <span class="badge bg-secondary ms-1">Désactivée</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (target.Protocol == TargetProtocol.Http)
+                                    {
+                                        <span class="badge bg-primary-subtle text-primary border border-primary">HTTP</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-info-subtle text-info border border-info">TCP :@target.Port</span>
+                                    }
+                                </td>
+                                <td class="font-monospace small text-truncate" style="max-width: 220px;" title="@target.HostOrUrl">
+                                    @target.HostOrUrl
+                                </td>
+                                <td>
+                                    @if (status == TargetStatus.Up)
+                                    {
+                                        <span class="badge bg-success-subtle text-success border border-success">
+                                            <i class="bi bi-check-circle me-1"></i>En ligne
+                                        </span>
+                                    }
+                                    else if (status == TargetStatus.Down)
+                                    {
+                                        <span class="badge bg-danger-subtle text-danger border border-danger" title="@state?.LastErrorMessage">
+                                            <i class="bi bi-x-circle me-1"></i>Hors ligne
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning-subtle text-warning border border-warning">
+                                            <i class="bi bi-hourglass-split me-1"></i>En attente
+                                        </span>
+                                    }
+                                </td>
+                                <td class="font-monospace">
+                                    @(state?.LastResponseTimeMs > 0 ? $"{state.LastResponseTimeMs} ms" : "—")
+                                </td>
+                                <td class="small text-secondary">
+                                    @(state?.LastCheckedAt.HasValue == true ? state.LastCheckedAt.Value.ToLocalTime().ToString("HH:mm:ss") : "Jamais")
+                                </td>
+                                <td class="small font-monospace text-secondary">
+                                    @(!string.IsNullOrEmpty(target.AlertDiscordChannelId) ? target.AlertDiscordChannelId : "(Global)")
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-info" title="Tester maintenant"
+                                                disabled="@(testingTargetId == target.Id)"
+                                                @onclick="() => TestTargetNowAsync(target)">
+                                            @if (testingTargetId == target.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-play-fill"></i>
+                                            }
+                                        </button>
+                                        <button class="btn btn-outline-warning" title="@(target.IsEnabled ? "Désactiver" : "Activer")"
+                                                @onclick="() => ToggleTargetAsync(target.Id)">
+                                            <i class="bi @(target.IsEnabled ? "bi-pause-fill" : "bi-play-circle")"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary" title="Modifier"
+                                                @onclick="() => StartEditTarget(target)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" title="Supprimer"
+                                                @onclick="() => DeleteTargetAsync(target.Id)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- 4. Paramètres Généraux -->
+    <div class="card p-4 shadow-sm border-secondary mb-4">
+        <h5 class="fw-bold mb-3">
+            <i class="bi bi-gear-fill me-2 text-secondary"></i>Paramètres Généraux de Surveillance
+        </h5>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Intervalle de vérification automatique (secondes)</label>
+                <input type="number" class="form-control bg-dark text-light border-secondary"
+                       min="10" max="86400"
+                       @bind="settings.CheckIntervalSeconds" />
+                <div class="form-text text-secondary small">
+                    Délai entre deux séries de vérifications (ex: 60s).
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Salon Discord d'alerte par défaut (ID)</label>
+                <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                       placeholder="ex: 123456789012345678"
+                       @bind="settings.DefaultAlertChannelId" />
+                <div class="form-text text-secondary small">
+                    Salon où sont publiées les alertes DOWN / UP si non surchargé par cible.
+                </div>
+            </div>
+
+            <div class="col-12 mt-3">
+                <button class="btn btn-primary d-flex align-items-center gap-2" @onclick="SaveSettingsAsync">
+                    <i class="bi bi-floppy"></i>
+                    <span>Enregistrer les paramètres généraux</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private UptimeSettings settings = new();
+    private string? feedbackMessage;
+    private bool isSuccessFeedback = true;
+    private bool isCheckingAll;
+    private string? testingTargetId;
+
+    // Formulaire d'édition / création
+    private bool isAddingTarget;
+    private MonitoredTarget? editingTarget;
+    private string formName = string.Empty;
+    private TargetProtocol formProtocol = TargetProtocol.Http;
+    private string formHostOrUrl = string.Empty;
+    private int? formPort;
+    private int formTimeoutSeconds = 5;
+    private int formFailureThreshold = 2;
+    private string? formAlertChannelId;
+
+    protected override void OnInitialized()
+    {
+        settings = ConfigService.GetSettings();
+        MonitorService.OnTargetsChecked += HandleTargetsChecked;
+    }
+
+    private void HandleTargetsChecked()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        MonitorService.OnTargetsChecked -= HandleTargetsChecked;
+    }
+
+    private async Task ToggleGlobalEnabledAsync(ChangeEventArgs e)
+    {
+        settings.IsEnabled = (bool)(e.Value ?? false);
+        await ConfigService.SaveSettingsAsync(settings);
+        ShowFeedback(settings.IsEnabled ? "Surveillance globale activée." : "Surveillance globale désactivée.", true);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+            ShowFeedback("Paramètres généraux enregistrés avec succès.", true);
+        }
+        catch (Exception ex)
+        {
+            ShowFeedback($"Erreur lors de l'enregistrement : {ex.Message}", false);
+        }
+    }
+
+    private async Task CheckAllNowAsync()
+    {
+        isCheckingAll = true;
+        feedbackMessage = null;
+
+        try
+        {
+            var result = await MonitorService.CheckAllTargetsAsync();
+            ShowFeedback(result.Message, result.Success);
+        }
+        catch (Exception ex)
+        {
+            ShowFeedback($"Erreur lors de la vérification : {ex.Message}", false);
+        }
+        finally
+        {
+            isCheckingAll = false;
+        }
+    }
+
+    private async Task TestTargetNowAsync(MonitoredTarget target)
+    {
+        testingTargetId = target.Id;
+        feedbackMessage = null;
+
+        try
+        {
+            var result = await MonitorService.TestTargetAsync(target);
+            if (result.Success)
+            {
+                ShowFeedback($"Test réussi pour {target.Name} ! Temps de réponse : {result.ResponseTimeMs} ms", true);
+            }
+            else
+            {
+                ShowFeedback($"Échec du test pour {target.Name} : {result.ErrorMessage} ({result.ResponseTimeMs} ms)", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowFeedback($"Erreur lors du test de {target.Name} : {ex.Message}", false);
+        }
+        finally
+        {
+            testingTargetId = null;
+        }
+    }
+
+    private void StartAddTarget()
+    {
+        editingTarget = null;
+        isAddingTarget = true;
+        formName = string.Empty;
+        formProtocol = TargetProtocol.Http;
+        formHostOrUrl = string.Empty;
+        formPort = null;
+        formTimeoutSeconds = 5;
+        formFailureThreshold = 2;
+        formAlertChannelId = null;
+    }
+
+    private void StartEditTarget(MonitoredTarget target)
+    {
+        isAddingTarget = false;
+        editingTarget = target;
+        formName = target.Name;
+        formProtocol = target.Protocol;
+        formHostOrUrl = target.HostOrUrl;
+        formPort = target.Port;
+        formTimeoutSeconds = target.TimeoutSeconds;
+        formFailureThreshold = target.FailureThreshold;
+        formAlertChannelId = target.AlertDiscordChannelId;
+    }
+
+    private void CancelTargetEdit()
+    {
+        isAddingTarget = false;
+        editingTarget = null;
+    }
+
+    private async Task SaveTargetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(formName))
+        {
+            ShowFeedback("Le nom de la cible est obligatoire.", false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formHostOrUrl))
+        {
+            ShowFeedback("L'hôte ou URL de la cible est obligatoire.", false);
+            return;
+        }
+
+        if (formProtocol == TargetProtocol.Tcp && (!formPort.HasValue || formPort.Value <= 0 || formPort.Value > 65535))
+        {
+            ShowFeedback("Un port TCP valide (1-65535) est requis pour le protocole TCP.", false);
+            return;
+        }
+
+        try
+        {
+            if (editingTarget != null)
+            {
+                editingTarget.Name = formName.Trim();
+                editingTarget.Protocol = formProtocol;
+                editingTarget.HostOrUrl = formHostOrUrl.Trim();
+                editingTarget.Port = formPort;
+                editingTarget.TimeoutSeconds = Math.Clamp(formTimeoutSeconds, 1, 60);
+                editingTarget.FailureThreshold = Math.Clamp(formFailureThreshold, 1, 10);
+                editingTarget.AlertDiscordChannelId = string.IsNullOrWhiteSpace(formAlertChannelId) ? null : formAlertChannelId.Trim();
+
+                await ConfigService.UpdateTargetAsync(editingTarget);
+                ShowFeedback($"Cible '{editingTarget.Name}' mise à jour.", true);
+            }
+            else
+            {
+                var newTarget = new MonitoredTarget
+                {
+                    Name = formName.Trim(),
+                    Protocol = formProtocol,
+                    HostOrUrl = formHostOrUrl.Trim(),
+                    Port = formPort,
+                    TimeoutSeconds = Math.Clamp(formTimeoutSeconds, 1, 60),
+                    FailureThreshold = Math.Clamp(formFailureThreshold, 1, 10),
+                    AlertDiscordChannelId = string.IsNullOrWhiteSpace(formAlertChannelId) ? null : formAlertChannelId.Trim(),
+                    IsEnabled = true
+                };
+
+                await ConfigService.AddTargetAsync(newTarget);
+                ShowFeedback($"Cible '{newTarget.Name}' ajoutée avec succès.", true);
+            }
+
+            CancelTargetEdit();
+            settings = ConfigService.GetSettings();
+        }
+        catch (Exception ex)
+        {
+            ShowFeedback($"Erreur lors de l'enregistrement de la cible : {ex.Message}", false);
+        }
+    }
+
+    private async Task ToggleTargetAsync(string targetId)
+    {
+        await ConfigService.ToggleTargetAsync(targetId);
+        settings = ConfigService.GetSettings();
+    }
+
+    private async Task DeleteTargetAsync(string targetId)
+    {
+        await ConfigService.DeleteTargetAsync(targetId);
+        await StateService.RemoveTargetStateAsync(targetId);
+        settings = ConfigService.GetSettings();
+        ShowFeedback("Cible supprimée avec succès.", true);
+    }
+
+    private void ShowFeedback(string message, bool isSuccess)
+    {
+        feedbackMessage = message;
+        isSuccessFeedback = isSuccess;
+    }
+}
