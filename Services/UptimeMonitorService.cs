@@ -93,7 +93,7 @@ public class UptimeMonitorService(
     public async Task<TargetCheckResult> CheckHttpTargetAsync(MonitoredTarget target, CancellationToken ct)
     {
         var url = FormatHttpUrl(target);
-        var timeoutSeconds = target.TimeoutSeconds > 0 ? target.TimeoutSeconds : 5;
+        var timeoutSeconds = Math.Clamp(target.TimeoutSeconds > 0 ? target.TimeoutSeconds : 5, 1, 60);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
@@ -138,7 +138,7 @@ public class UptimeMonitorService(
             return new TargetCheckResult(false, 0, "Port TCP invalide ou manquant");
         }
 
-        var timeoutSeconds = target.TimeoutSeconds > 0 ? target.TimeoutSeconds : 5;
+        var timeoutSeconds = Math.Clamp(target.TimeoutSeconds > 0 ? target.TimeoutSeconds : 5, 1, 60);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
@@ -238,15 +238,18 @@ public class UptimeMonitorService(
     public Embed BuildDownEmbed(MonitoredTarget target, int consecutiveFailures, string? errorMessage)
     {
         var protocolStr = target.Protocol == TargetProtocol.Http ? "HTTP(S)" : $"TCP ({target.Port})";
+        var safeName = SanitizeUntrustedText(target.Name);
+        var safeHost = SanitizeUntrustedText(target.HostOrUrl);
+        var safeError = SanitizeUntrustedText(errorMessage ?? "Aucune réponse");
 
         return new EmbedBuilder()
-            .WithTitle($"🚨 Incident détecté : {target.Name}")
+            .WithTitle($"🚨 Incident détecté : {safeName}")
             .WithDescription($"La cible ne répond plus et a dépassé le seuil de {consecutiveFailures} échec(s) consécutif(s).")
             .WithColor(Color.Red)
             .AddField("Protocole", protocolStr, inline: true)
-            .AddField("Cible", target.HostOrUrl, inline: true)
+            .AddField("Cible", safeHost, inline: true)
             .AddField("Échecs consécutifs", consecutiveFailures.ToString(), inline: true)
-            .AddField("Détail de l'erreur", errorMessage ?? "Aucune réponse", inline: false)
+            .AddField("Détail de l'erreur", safeError, inline: false)
             .WithFooter("DiscordBot Uptime Monitor")
             .WithTimestamp(timeProvider.GetUtcNow())
             .Build();
@@ -255,18 +258,29 @@ public class UptimeMonitorService(
     public Embed BuildUpEmbed(MonitoredTarget target, TimeSpan downtime, long responseTimeMs)
     {
         var protocolStr = target.Protocol == TargetProtocol.Http ? "HTTP(S)" : $"TCP ({target.Port})";
+        var safeName = SanitizeUntrustedText(target.Name);
+        var safeHost = SanitizeUntrustedText(target.HostOrUrl);
 
         return new EmbedBuilder()
-            .WithTitle($"🟢 Rétablissement : {target.Name}")
+            .WithTitle($"🟢 Rétablissement : {safeName}")
             .WithDescription("La cible est à nouveau accessible et répond normalement.")
             .WithColor(Color.Green)
             .AddField("Protocole", protocolStr, inline: true)
-            .AddField("Cible", target.HostOrUrl, inline: true)
+            .AddField("Cible", safeHost, inline: true)
             .AddField("Latence", $"{responseTimeMs} ms", inline: true)
             .AddField("Durée de l'incident", FormatDuration(downtime), inline: false)
             .WithFooter("DiscordBot Uptime Monitor")
             .WithTimestamp(timeProvider.GetUtcNow())
             .Build();
+    }
+
+    public static string SanitizeUntrustedText(string? input)
+    {
+        if (string.IsNullOrEmpty(input)) return string.Empty;
+        return input
+            .Replace("@everyone", "@\u200beveryone", StringComparison.OrdinalIgnoreCase)
+            .Replace("@here", "@\u200bhere", StringComparison.OrdinalIgnoreCase)
+            .Replace("<@", "<\u200b@", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string FormatDuration(TimeSpan duration)
@@ -319,7 +333,7 @@ public class UptimeMonitorService(
         {
             if (discordClient.GetChannel(channelId) is IMessageChannel channel)
             {
-                await channel.SendMessageAsync(embed: embed);
+                await channel.SendMessageAsync(embed: embed, allowedMentions: AllowedMentions.None);
             }
             else
             {

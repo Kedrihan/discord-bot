@@ -380,6 +380,71 @@ public class UptimeMonitorTests
         healthList.Should().Contain(s => s.Name == "Uptime Monitor");
     }
 
+    [Test]
+    public void SanitizeUntrustedText_ShouldNeutralizeMentions()
+    {
+        var input = "Target @everyone and @here with <@123456789> and <@&987654321>";
+        var sanitized = UptimeMonitorService.SanitizeUntrustedText(input);
+
+        sanitized.Should().NotContain("@everyone");
+        sanitized.Should().NotContain("@here");
+        sanitized.Should().NotContain("<@");
+        sanitized.Should().Contain("@\u200beveryone");
+        sanitized.Should().Contain("@\u200bhere");
+        sanitized.Should().Contain("<\u200b@123456789>");
+        sanitized.Should().Contain("<\u200b@&987654321>");
+    }
+
+    [Test]
+    public void BuildDownEmbed_ShouldSanitizeMentionsInTargetNameHostAndError()
+    {
+        var monitorService = CreateMonitorService(new MockHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
+        var maliciousTarget = new MonitoredTarget
+        {
+            Id = "exploit1",
+            Name = "Attacker @everyone",
+            HostOrUrl = "http://badhost.local/<@123456789>",
+            Protocol = TargetProtocol.Http
+        };
+
+        var embed = monitorService.BuildDownEmbed(maliciousTarget, 3, "Failed with error @here pinging <@&999>");
+
+        embed.Title.Should().NotContain("@everyone");
+        embed.Title.Should().Contain("@\u200beveryone");
+
+        var hostField = embed.Fields.First(f => f.Name == "Cible");
+        hostField.Value.Should().NotContain("<@");
+        hostField.Value.Should().Contain("<\u200b@");
+
+        var errorField = embed.Fields.First(f => f.Name == "Détail de l'erreur");
+        errorField.Value.Should().NotContain("@here");
+        errorField.Value.Should().NotContain("<@&");
+        errorField.Value.Should().Contain("@\u200bhere");
+        errorField.Value.Should().Contain("<\u200b@&999>");
+    }
+
+    [Test]
+    public void BuildUpEmbed_ShouldSanitizeMentionsInTargetNameAndHost()
+    {
+        var monitorService = CreateMonitorService(new MockHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
+        var maliciousTarget = new MonitoredTarget
+        {
+            Id = "exploit2",
+            Name = "Server @here",
+            HostOrUrl = "https://safe.local/<@&111222333>",
+            Protocol = TargetProtocol.Http
+        };
+
+        var embed = monitorService.BuildUpEmbed(maliciousTarget, TimeSpan.FromMinutes(5), 25);
+
+        embed.Title.Should().NotContain("@here");
+        embed.Title.Should().Contain("@\u200bhere");
+
+        var hostField = embed.Fields.First(f => f.Name == "Cible");
+        hostField.Value.Should().NotContain("<@&");
+        hostField.Value.Should().Contain("<\u200b@&");
+    }
+
     private UptimeMonitorService CreateMonitorService(
         HttpMessageHandler httpHandler,
         UptimeConfigService? configService = null,

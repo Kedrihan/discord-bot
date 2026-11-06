@@ -77,10 +77,11 @@ public class GeneralModule(
             var proto = t.Protocol == TargetProtocol.Http ? "HTTP" : $"TCP:{t.Port}";
             var latencyText = state?.LastResponseTimeMs > 0 ? $"{state.LastResponseTimeMs} ms" : "—";
             var errorSuffix = status == TargetStatus.Down && !string.IsNullOrWhiteSpace(state?.LastErrorMessage)
-                ? $" ({state.LastErrorMessage})"
+                ? $" ({UptimeMonitorService.SanitizeUntrustedText(state.LastErrorMessage)})"
                 : "";
 
-            targetsLines.Add($"{icon} **{t.Name}** (`{proto}`) : `{latencyText}`{errorSuffix}");
+            var safeName = UptimeMonitorService.SanitizeUntrustedText(t.Name);
+            targetsLines.Add($"{icon} **{safeName}** (`{proto}`) : `{latencyText}`{errorSuffix}");
         }
 
         var targetsSummary = targetsLines.Count > 0
@@ -101,7 +102,7 @@ public class GeneralModule(
             .WithCurrentTimestamp()
             .Build();
 
-        await RespondAsync(embed: embed);
+        await RespondAsync(embed: embed, allowedMentions: AllowedMentions.None);
     }
 
     [SlashCommand("stats", "Affiche les statistiques système et métriques du conteneur")]
