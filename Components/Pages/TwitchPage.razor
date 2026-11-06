@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject TwitchConfigService ConfigService
 @inject TwitchLiveService LiveService
+@inject TwitchClipService ClipService
 @inject TwitchStateService StateService
 @inject TwitchEventSubService EventSubService
 @inject DiscordSocketClient DiscordClient
@@ -13,9 +14,9 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h3 class="fw-bold mb-1">
-                <i class="bi bi-twitch text-primary me-2" style="color: #9146FF !important;"></i>Notifications Twitch Live
+                <i class="bi bi-twitch text-primary me-2" style="color: #9146FF !important;"></i>Notifications Twitch Live &amp; Clips
             </h3>
-            <p class="text-secondary mb-0">Alertes Discord en temps réel lorsqu'un streamer passe en direct avec suppression automatique du message hors ligne.</p>
+            <p class="text-secondary mb-0">Alertes Discord en temps réel lorsqu'un streamer passe en direct et notifications des nouveaux clips créés.</p>
         </div>
         <div class="form-check form-switch fs-4">
             <input class="form-check-input" type="checkbox" id="enableSwitch" checked="@settings.IsEnabled" @onchange="ToggleGlobalEnabledAsync">
@@ -80,12 +81,26 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Intervalle de Polling (secondes)</label>
+                    <label class="form-label small fw-semibold text-secondary">Intervalle de Polling des Streams (secondes)</label>
                     <input type="number" min="15" max="3600" class="form-control bg-dark text-light border-secondary font-monospace"
                            placeholder="30"
                            @bind="settings.CheckIntervalSeconds" />
                     <div class="form-text text-secondary small">
                         Intervalle entre chaque vérification périodique lorsque le mode Polling est actif (entre 15s et 3600s, défaut : 30s).
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" id="enableClipsSwitch" checked="@settings.IsClipsEnabled" @onchange="ToggleGlobalClipsEnabledAsync">
+                        <label class="form-check-label small fw-semibold text-secondary" for="enableClipsSwitch">Module de détection des clips Twitch activé</label>
+                    </div>
+                    <label class="form-label small fw-semibold text-secondary mt-2">Intervalle de vérification des Clips (secondes)</label>
+                    <input type="number" min="15" max="3600" class="form-control bg-dark text-light border-secondary font-monospace"
+                           placeholder="60"
+                           @bind="settings.ClipCheckIntervalSeconds" />
+                    <div class="form-text text-secondary small">
+                        Intervalle entre chaque vérification des nouveaux clips (entre 15s et 3600s, défaut : 60s).
                     </div>
                 </div>
 
@@ -172,6 +187,12 @@
                             <span>Streams actuellement en direct :</span>
                             <span class="badge @(LiveService.GetLiveStreams().Count > 0 ? "bg-danger" : "bg-secondary")">@LiveService.GetLiveStreams().Count</span>
                         </li>
+                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                            <span>Module Clips Twitch :</span>
+                            <span class="badge @(settings.IsClipsEnabled ? "bg-success" : "bg-secondary")">
+                                @(settings.IsClipsEnabled ? $"Actif ({settings.ClipCheckIntervalSeconds}s)" : "Désactivé")
+                            </span>
+                        </li>
                     </ul>
                 </div>
 
@@ -189,12 +210,27 @@
                         @if (isChecking)
                         {
                             <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                            <span>Vérification en cours...</span>
+                            <span>Vérification des streams...</span>
                         }
                         else
                         {
                             <i class="bi bi-arrow-repeat"></i>
                             <span>Vérifier les streams maintenant</span>
+                        }
+                    </button>
+
+                    <button class="btn btn-outline-warning d-flex align-items-center justify-content-center gap-2"
+                            disabled="@isCheckingClips"
+                            @onclick="CheckClipsNowAsync">
+                        @if (isCheckingClips)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            <span>Vérification des clips...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-film"></i>
+                            <span>Vérifier les clips maintenant</span>
                         }
                     </button>
                 </div>
@@ -261,10 +297,49 @@
                                   @bind="formCustomMessage"></textarea>
                     </div>
 
+                    <div class="col-12 mt-3 pt-3 border-top border-secondary">
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="channelClipEnableSwitch" @bind="formIsClipEnabled">
+                            <label class="form-check-label small fw-semibold text-light" for="channelClipEnableSwitch">
+                                <i class="bi bi-film me-1 text-warning"></i>Activer les alertes de nouveaux clips pour cette chaîne
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (formIsClipEnabled)
+                    {
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold text-secondary">Salon Discord pour les clips (ID)</label>
+                            <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                                   placeholder="ex: 123456789012345678"
+                                   @bind="formClipDiscordChannelId" />
+                            <div class="form-text text-secondary small">
+                                ID numérique du salon Discord où envoyer les clips.
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small fw-semibold text-secondary mb-0">Message personnalisé pour les clips</label>
+                                <div class="small">
+                                    <span class="text-secondary me-1">Variables :</span>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendClipVariable("{streamer}")'>{streamer}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendClipVariable("{creator}")'>{creator}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendClipVariable("{title}")'>{title}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendClipVariable("{duration}")'>{duration}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendClipVariable("{views}")'>{views}</button>
+                                    <button type="button" class="badge bg-secondary border-0" @onclick='() => AppendClipVariable("{url}")'>{url}</button>
+                                </div>
+                            </div>
+                            <textarea class="form-control bg-dark text-light border-secondary" rows="2"
+                                      @bind="formClipCustomMessage"></textarea>
+                        </div>
+                    }
+
                     <div class="col-12 d-flex justify-content-between align-items-center">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="channelEnableSwitch" @bind="formIsEnabled">
-                            <label class="form-check-label small" for="channelEnableSwitch">Activer la surveillance pour cette chaîne</label>
+                            <label class="form-check-label small" for="channelEnableSwitch">Activer la surveillance live pour cette chaîne</label>
                         </div>
 
                         <div class="d-flex gap-2">
@@ -294,9 +369,11 @@
                         <tr class="text-secondary small">
                             <th>Statut</th>
                             <th>Chaîne Twitch</th>
-                            <th>Salon Discord</th>
-                            <th>Message</th>
-                            <th class="text-center">Actif</th>
+                            <th>Salon Live</th>
+                            <th>Salon Clips</th>
+                            <th>Message Live</th>
+                            <th class="text-center">Live</th>
+                            <th class="text-center">Clips</th>
                             <th class="text-end">Actions</th>
                         </tr>
                     </thead>
@@ -334,7 +411,21 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <span class="small text-secondary text-truncate d-inline-block" style="max-width: 200px;" title="@ch.CustomMessage">
+                                    @if (ch.IsClipEnabled && !string.IsNullOrWhiteSpace(ch.ClipDiscordChannelId))
+                                    {
+                                        var clipChannelIdNum = ulong.TryParse(ch.ClipDiscordChannelId, out var parsedClipId) ? parsedClipId : 0;
+                                        var discordClipChannelName = clipChannelIdNum != 0 ? (DiscordClient.GetChannel(clipChannelIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
+                                        <span class="badge bg-dark font-monospace border border-secondary text-info">
+                                            @(discordClipChannelName != null ? $"#{discordClipChannelName}" : ch.ClipDiscordChannelId)
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Désactivé</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="small text-secondary text-truncate d-inline-block" style="max-width: 150px;" title="@ch.CustomMessage">
                                         @ch.CustomMessage
                                     </span>
                                 </td>
@@ -343,10 +434,15 @@
                                         <input class="form-check-input" type="checkbox" checked="@ch.IsEnabled" @onchange="() => ToggleChannelEnabledAsync(ch)" />
                                     </div>
                                 </td>
+                                <td class="text-center">
+                                    <div class="form-check form-switch d-inline-block">
+                                        <input class="form-check-input" type="checkbox" checked="@ch.IsClipEnabled" @onchange="() => ToggleChannelClipEnabledAsync(ch)" />
+                                    </div>
+                                </td>
                                 <td class="text-end">
                                     <div class="btn-group btn-group-sm">
                                         <button class="btn btn-outline-info"
-                                                title="Tester l'envoi de notification"
+                                                title="Tester l'alerte en direct"
                                                 disabled="@testingChannels.Contains(ch.TwitchUsername)"
                                                 @onclick="() => TestNotificationAsync(ch.TwitchUsername)">
                                             @if (testingChannels.Contains(ch.TwitchUsername))
@@ -355,10 +451,23 @@
                                             }
                                             else
                                             {
-                                                <i class="bi bi-send"></i>
+                                                <i class="bi bi-broadcast"></i>
                                             }
                                         </button>
-                                        <button class="btn btn-outline-warning" title="Modifier" @onclick="() => EditChannel(ch)">
+                                        <button class="btn btn-outline-warning"
+                                                title="Tester la notification de clip"
+                                                disabled="@(testingClipChannels.Contains(ch.TwitchUsername) || !ch.IsClipEnabled || string.IsNullOrWhiteSpace(ch.ClipDiscordChannelId))"
+                                                @onclick="() => TestClipNotificationAsync(ch.TwitchUsername)">
+                                            @if (testingClipChannels.Contains(ch.TwitchUsername))
+                                            {
+                                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-film"></i>
+                                            }
+                                        </button>
+                                        <button class="btn btn-outline-secondary" title="Modifier" @onclick="() => EditChannel(ch)">
                                             <i class="bi bi-pencil"></i>
                                         </button>
                                         <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannelAsync(ch)">
@@ -380,7 +489,9 @@
     private bool showSecret = false;
     private bool showUserToken = false;
     private bool isChecking = false;
+    private bool isCheckingClips = false;
     private readonly HashSet<string> testingChannels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> testingClipChannels = new(StringComparer.OrdinalIgnoreCase);
 
     private string? feedbackMessage;
     private bool isSuccessFeedback = true;
@@ -392,6 +503,9 @@
     private string formDiscordChannelId = string.Empty;
     private string formCustomMessage = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
     private bool formIsEnabled = true;
+    private bool formIsClipEnabled = false;
+    private string formClipDiscordChannelId = string.Empty;
+    private string formClipCustomMessage = "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}";
 
     protected override void OnInitialized()
     {
@@ -427,6 +541,9 @@
         formDiscordChannelId = string.Empty;
         formCustomMessage = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
         formIsEnabled = true;
+        formIsClipEnabled = false;
+        formClipDiscordChannelId = string.Empty;
+        formClipCustomMessage = "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}";
     }
 
     private void EditChannel(TrackedTwitchChannel channel)
@@ -437,6 +554,11 @@
         formDiscordChannelId = channel.DiscordChannelId;
         formCustomMessage = channel.CustomMessage;
         formIsEnabled = channel.IsEnabled;
+        formIsClipEnabled = channel.IsClipEnabled;
+        formClipDiscordChannelId = channel.ClipDiscordChannelId;
+        formClipCustomMessage = string.IsNullOrWhiteSpace(channel.ClipCustomMessage)
+            ? "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}"
+            : channel.ClipCustomMessage;
     }
 
     private void CancelForm()
@@ -450,15 +572,32 @@
         formCustomMessage += (string.IsNullOrEmpty(formCustomMessage) ? "" : " ") + token;
     }
 
+    private void AppendClipVariable(string token)
+    {
+        formClipCustomMessage += (string.IsNullOrEmpty(formClipCustomMessage) ? "" : " ") + token;
+    }
+
     private async Task ToggleGlobalEnabledAsync()
     {
         settings.IsEnabled = !settings.IsEnabled;
         await SaveSettingsAsync();
     }
 
+    private async Task ToggleGlobalClipsEnabledAsync()
+    {
+        settings.IsClipsEnabled = !settings.IsClipsEnabled;
+        await SaveSettingsAsync();
+    }
+
     private async Task ToggleChannelEnabledAsync(TrackedTwitchChannel channel)
     {
         channel.IsEnabled = !channel.IsEnabled;
+        await SaveSettingsAsync();
+    }
+
+    private async Task ToggleChannelClipEnabledAsync(TrackedTwitchChannel channel)
+    {
+        channel.IsClipEnabled = !channel.IsClipEnabled;
         await SaveSettingsAsync();
     }
 
@@ -501,12 +640,27 @@
             return;
         }
 
+        var clipChannelIdTrimmed = formClipDiscordChannelId.Trim();
+        if (formIsClipEnabled && (string.IsNullOrWhiteSpace(clipChannelIdTrimmed) || !ulong.TryParse(clipChannelIdTrimmed, out var parsedClipChannelId) || parsedClipChannelId == 0))
+        {
+            feedbackMessage = "L'ID du salon Discord pour les clips doit être un identifiant numérique valide (ex: 123456789012345678).";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var clipMessage = string.IsNullOrWhiteSpace(formClipCustomMessage)
+            ? "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}"
+            : formClipCustomMessage;
+
         if (editingChannel != null)
         {
             editingChannel.TwitchUsername = rawUsername;
             editingChannel.DiscordChannelId = channelIdTrimmed;
             editingChannel.CustomMessage = string.IsNullOrWhiteSpace(formCustomMessage) ? "🔴 **{streamer}** est en direct sur Twitch !\n{url}" : formCustomMessage;
             editingChannel.IsEnabled = formIsEnabled;
+            editingChannel.IsClipEnabled = formIsClipEnabled;
+            editingChannel.ClipDiscordChannelId = clipChannelIdTrimmed;
+            editingChannel.ClipCustomMessage = clipMessage;
         }
         else
         {
@@ -523,7 +677,10 @@
                 TwitchUsername = rawUsername,
                 DiscordChannelId = channelIdTrimmed,
                 CustomMessage = string.IsNullOrWhiteSpace(formCustomMessage) ? "🔴 **{streamer}** est en direct sur Twitch !\n{url}" : formCustomMessage,
-                IsEnabled = formIsEnabled
+                IsEnabled = formIsEnabled,
+                IsClipEnabled = formIsClipEnabled,
+                ClipDiscordChannelId = clipChannelIdTrimmed,
+                ClipCustomMessage = clipMessage
             });
         }
 
@@ -546,6 +703,7 @@
         try
         {
             settings.CheckIntervalSeconds = Math.Clamp(settings.CheckIntervalSeconds, 15, 3600);
+            settings.ClipCheckIntervalSeconds = Math.Clamp(settings.ClipCheckIntervalSeconds, 15, 3600);
             await ConfigService.SaveSettingsAsync(settings);
             isSuccessFeedback = true;
             feedbackMessage = "Configuration Twitch enregistrée avec succès !";
@@ -634,6 +792,31 @@
         }
     }
 
+    private async Task CheckClipsNowAsync()
+    {
+        isCheckingClips = true;
+        feedbackMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+            var result = await ClipService.CheckNewClipsAsync();
+            isSuccessFeedback = result.Success;
+            feedbackMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Erreur lors de la vérification des clips : {ex.Message}";
+        }
+        finally
+        {
+            isCheckingClips = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task TestNotificationAsync(string username)
     {
         testingChannels.Add(username);
@@ -655,6 +838,31 @@
         finally
         {
             testingChannels.Remove(username);
+            StateHasChanged();
+        }
+    }
+
+    private async Task TestClipNotificationAsync(string username)
+    {
+        testingClipChannels.Add(username);
+        feedbackMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await ConfigService.SaveSettingsAsync(settings);
+            var result = await ClipService.TestClipNotificationAsync(username);
+            isSuccessFeedback = result.Success;
+            feedbackMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            isSuccessFeedback = false;
+            feedbackMessage = $"Erreur lors du test de notification de clip : {ex.Message}";
+        }
+        finally
+        {
+            testingClipChannels.Remove(username);
             StateHasChanged();
         }
     }

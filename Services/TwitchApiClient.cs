@@ -95,6 +95,79 @@ public class TwitchApiClient(
         return results;
     }
 
+    public async Task<IReadOnlyList<TwitchClipInfo>> GetClipsAsync(
+        string broadcasterUserId,
+        DateTimeOffset? startedAt = null,
+        int first = 20,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(broadcasterUserId)) return [];
+
+        var settings = configService.GetSettings();
+        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        {
+            logger.LogWarning("Les identifiants de l'API Twitch (Client ID ou Client Secret) ne sont pas configurés.");
+            return [];
+        }
+
+        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        if (string.IsNullOrEmpty(token)) return [];
+
+        var clampedFirst = Math.Clamp(first, 1, 100);
+        var query = $"broadcaster_id={Uri.EscapeDataString(broadcasterUserId.Trim())}&first={clampedFirst}";
+        if (startedAt.HasValue)
+        {
+            query += $"&started_at={Uri.EscapeDataString(startedAt.Value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ"))}";
+        }
+
+        var requestUri = $"https://api.twitch.tv/helix/clips?{query}";
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            request.Headers.Add("Client-Id", settings.ClientId);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var response = await httpClient.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogError("Échec de la récupération des clips Twitch Helix pour broadcaster {UserId}. Statut HTTP : {StatusCode}", broadcasterUserId, response.StatusCode);
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    _cachedToken = null;
+                    _tokenExpiresAt = DateTimeOffset.MinValue;
+                }
+                return [];
+            }
+
+            var content = await response.Content.ReadAsStringAsync(ct);
+            var clipsResponse = JsonSerializer.Deserialize<HelixClipsResponse>(content);
+            if (clipsResponse?.Data == null) return [];
+
+            return clipsResponse.Data.Select(c => new TwitchClipInfo(
+                Id: c.Id ?? string.Empty,
+                Url: c.Url ?? string.Empty,
+                EmbedUrl: c.EmbedUrl ?? string.Empty,
+                BroadcasterId: c.BroadcasterId ?? string.Empty,
+                BroadcasterName: c.BroadcasterName ?? string.Empty,
+                CreatorId: c.CreatorId ?? string.Empty,
+                CreatorName: c.CreatorName ?? string.Empty,
+                VideoId: c.VideoId ?? string.Empty,
+                GameId: c.GameId ?? string.Empty,
+                Title: c.Title ?? string.Empty,
+                ViewCount: c.ViewCount,
+                CreatedAt: c.CreatedAt,
+                ThumbnailUrl: c.ThumbnailUrl ?? string.Empty,
+                Duration: c.Duration
+            )).ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la récupération des clips Twitch pour broadcaster {UserId}.", broadcasterUserId);
+            return [];
+        }
+    }
+
     public async Task<IReadOnlyList<TwitchUserInfo>> GetUsersByLoginAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
     {
         var logins = userLogins
@@ -458,5 +531,26 @@ public class TwitchApiClient(
         [property: JsonPropertyName("type")] string Type,
         [property: JsonPropertyName("version")] string Version,
         [property: JsonPropertyName("cost")] int? Cost
+    );
+
+    private sealed record HelixClipsResponse(
+        [property: JsonPropertyName("data")] List<HelixClipItem>? Data
+    );
+
+    private sealed record HelixClipItem(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("url")] string? Url,
+        [property: JsonPropertyName("embed_url")] string? EmbedUrl,
+        [property: JsonPropertyName("broadcaster_id")] string? BroadcasterId,
+        [property: JsonPropertyName("broadcaster_name")] string? BroadcasterName,
+        [property: JsonPropertyName("creator_id")] string? CreatorId,
+        [property: JsonPropertyName("creator_name")] string? CreatorName,
+        [property: JsonPropertyName("video_id")] string? VideoId,
+        [property: JsonPropertyName("game_id")] string? GameId,
+        [property: JsonPropertyName("title")] string? Title,
+        [property: JsonPropertyName("view_count")] int ViewCount,
+        [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+        [property: JsonPropertyName("thumbnail_url")] string? ThumbnailUrl,
+        [property: JsonPropertyName("duration")] double Duration
     );
 }

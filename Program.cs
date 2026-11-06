@@ -138,7 +138,7 @@ builder.Services.AddSingleton<OpenMeteoService>();
 builder.Services.AddSingleton<MorningBriefingService>();
 builder.Services.AddHostedService<MorningBriefingScheduler>();
 
-// Services dédiés aux notifications Twitch Live
+// Services dédiés aux notifications Twitch Live et Clips
 builder.Services.AddTwitchLibEventSubWebsockets();
 builder.Services.AddSingleton<TwitchConfigService>();
 builder.Services.AddSingleton<TwitchStateService>();
@@ -146,6 +146,9 @@ builder.Services.AddSingleton<TwitchApiClient>();
 builder.Services.AddSingleton<TwitchLiveService>();
 builder.Services.AddSingleton<TwitchEventSubService>();
 builder.Services.AddHostedService<TwitchLiveScheduler>();
+builder.Services.AddSingleton<TwitchClipHistoryService>();
+builder.Services.AddSingleton<TwitchClipService>();
+builder.Services.AddHostedService<TwitchClipScheduler>();
 
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig

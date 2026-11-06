@@ -33,6 +33,7 @@ public class TwitchConfigService(
     public async Task SaveSettingsAsync(TwitchSettings newSettings, CancellationToken cancellationToken = default)
     {
         newSettings.CheckIntervalSeconds = Math.Clamp(newSettings.CheckIntervalSeconds, 15, 3600);
+        newSettings.ClipCheckIntervalSeconds = Math.Clamp(newSettings.ClipCheckIntervalSeconds, 15, 3600);
 
         string json;
         lock (_lock)
