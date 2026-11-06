@@ -4,7 +4,7 @@
   "editor.semanticHighlighting.enabled": true,
 
   // Thème de base compatible
-  "workbench.colorTheme": "Default Dark+",
+  "workbench.colorTheme": "Dark+",
 
   // --- Coloration Sémantique Visual Studio 2022 (.NET) ---
   "editor.semanticTokenColorCustomizations": {

@@ -1,12 +1,12 @@
 ---
 name: forge
 description: >-
-  Standardized 4-stage multi-agent engineering pipeline: Requirements Scoping ➡️ Implementation & Dev ➡️ Build & Unit Test Verification ➡️ Cybersecurity Review. Use whenever developing, designing, or implementing a new feature, complex bug fix, domain evolution, or major refactoring, or when triggered via /forge.
+  Standardized 3-stage multi-agent engineering pipeline: Requirements Scoping ➡️ Implementation, Build & Unit Testing ➡️ Cybersecurity Review. Use whenever developing, designing, or implementing a new feature, complex bug fix, domain evolution, or major refactoring, or when triggered via /forge.
 ---
 
 # 🛠️ The Forge: Multi-Agent Engineering Pipeline
 
-The Forge is the standard end-to-end development pipeline for the **discord-bot** repository. It coordinates four dedicated subagents sequentially to deliver robust, well-architected, fully tested, and secure software.
+The Forge is the standard end-to-end development pipeline for the **discord-bot** repository. It coordinates three dedicated subagents sequentially to deliver robust, well-architected, fully tested, and secure software.
 
 ---
 
@@ -15,24 +15,25 @@ The Forge is the standard end-to-end development pipeline for the **discord-bot*
 1. **Flash Model by Default:**
    All subagents systematically use the **Flash model** (`flash` or `inherit`). Calibrate thinking/reflection levels based on the complexity of the phase:
    - Deep reflection for complex scoping, tricky refactoring, and security audits.
-   - Direct/focused reflection for straightforward validation or standard code generation.
+   - Direct/focused reflection for standard code updates and unit testing.
 2. **Strict Project Standards:**
    Every subagent must respect the project standards defined in [AGENTS.md](file:///c:/Dev/discord-bot/AGENTS.md) (Primary Constructors, `TimeProvider`, `IFileSystem`, Strongly Typed Models, Early Return, NUnit + FluentAssertions).
-3. **Deployment Safety:**
+3. **Developer Ownership of Build & Tests:**
+   The Developer subagent is responsible for both implementation AND full test verification. It builds the solution, writes unit tests, executes the test suite in Docker, and self-heals until reaching a 100% green state.
+4. **Deployment Safety:**
    **NEVER push to the `production` branch autonomously.** All commits are pushed to `main` only.
-4. **Proportionality:**
-   Micro-tasks (typos, 2-line CSS fixes, static string updates) use a fast-track: direct implementation with build/test validation, bypassing the full 4-agent ceremony.
+5. **Proportionality:**
+   Micro-tasks (typos, 2-line CSS fixes, static string updates) use a fast-track: direct implementation with build/test validation, bypassing the multi-agent ceremony.
 
 ---
 
-## 🔄 The 4-Stage Pipeline
+## 🔄 The 3-Stage Pipeline
 
 ```mermaid
 flowchart LR
-    A["1. Scoping<br/>(Analyst Subagent)"] --> B["2. Dev & Code<br/>(Developer Subagent)"]
-    B --> C["3. Build & Test<br/>(Validator Subagent)"]
-    C --> D["4. Security Audit<br/>(Cyber Subagent)"]
-    D --> E["Deploy & Push<br/>(main branch)"]
+    A["1. Scoping<br/>(Analyst Subagent)"] --> B["2. Dev, Build & Tests<br/>(Developer Subagent)"]
+    B --> C["3. Security Audit<br/>(Cyber Subagent)"]
+    C --> D["Deploy & Push<br/>(main branch)"]
 ```
 
 ---
@@ -48,7 +49,7 @@ flowchart LR
 
 ---
 
-### Phase 2: Implementation & Development
+### Phase 2: Implementation, Build & Unit Testing
 * **Subagent Role:** `Developer` (`TypeName: "self"`, `Role: "Developer"`, `Model: "flash"`).
 * **Mission:**
   1. Implement features, models, services, Blazor components, or schedulers as scoped in Phase 1.
@@ -60,23 +61,18 @@ flowchart LR
      - **TimeProvider:** Injected `TimeProvider` abstraction, never hardcoded `DateTime.Now`.
      - **FileSystem:** Injected `IFileSystem`, never static `System.IO.File`.
      - **Blazor Lifecycle:** Implement `IDisposable` when subscribing to events and call `InvokeAsync(StateHasChanged)`.
+  3. **Build & Unit Test Verification (Developer Responsibility):**
+     - Write and update comprehensive NUnit unit tests (`tests/DiscordBot.Tests/`).
+     - Compile and run the test suite in the isolated .NET 10 Docker environment:
+       ```powershell
+       docker run --rm -v "${PWD}:/src:ro" mcr.microsoft.com/dotnet/sdk:10.0 bash -c "cp -r /src /tmp/build && cd /tmp/build/tests/DiscordBot.Tests && dotnet test --verbosity normal"
+       ```
+     - In case of compilation issues, warnings, or test failures, directly diagnose root causes and apply fixes until achieving a **100% green state (0 warnings, 0 errors, 100% tests passed)**.
+  * *Constraint:* Cybersecurity review can only begin once 100% of unit tests pass cleanly.
 
 ---
 
-### Phase 3: Build & Unit Test Verification
-* **Subagent Role:** `Technical Validator` (`TypeName: "self"`, `Role: "Technical Validator"`, `Model: "flash"`).
-* **Mission:**
-  1. Build the solution and run the full NUnit test suite in the isolated .NET 10 Docker environment:
-     ```powershell
-     docker run --rm -v "${PWD}:/src:ro" mcr.microsoft.com/dotnet/sdk:10.0 bash -c "cp -r /src /tmp/build && cd /tmp/build/tests/DiscordBot.Tests && dotnet test --verbosity normal"
-     ```
-  2. If compilation fails, warnings occur, or tests fail, diagnose root causes and **directly apply fixes** to code or tests until achieving a **100% green state**.
-  3. Report exact test counts, pass rates, and build metrics.
-  * *Constraint:* The cybersecurity review can only start once 100% of unit tests pass.
-
----
-
-### Phase 4: Systematic Cybersecurity Review
+### Phase 3: Systematic Cybersecurity Review
 * **Subagent Role:** `Cybersecurity Auditor` (`TypeName: "self"`, `Role: "Cybersecurity Auditor"`, `Model: "flash"`).
 * **Mission:**
   1. **CVE Scanning:** Audit dependencies for known vulnerabilities:
@@ -95,7 +91,7 @@ flowchart LR
 
 ## 🚀 Delivery & Finalization
 
-Once Phase 4 is approved:
+Once Phase 3 is approved:
 1. Rebuild and restart the Docker container:
    ```powershell
    docker compose up -d --build

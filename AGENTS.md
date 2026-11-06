@@ -102,10 +102,9 @@ These rules are strict and must be followed by all developers and AI agents work
 
 ### 10. Multi-Agent Development Pipeline (`/forge`)
 * For new features, complex domain evolutions, or major refactorings, activate the `/forge` skill.
-* The `/forge` skill coordinates the 4-stage pipeline sequentially:
+* The `/forge` skill coordinates the 3-stage pipeline sequentially:
   1. **Scoping:** Interactive requirements analysis and edge-case resolution (Analyst subagent).
-  2. **Development:** Implementation adhering to all coding standards (Developer subagent).
-  3. **Technical Validation:** Automated build and full NUnit test execution with self-healing (Validator subagent).
-  4. **Security Audit:** Vulnerability scanning (CVEs) and defensive review (Cybersecurity subagent).
+  2. **Development, Build & Tests:** Implementation adhering to all coding standards, compilation verification, and automated NUnit test execution with self-healing (Developer subagent).
+  3. **Security Audit:** Vulnerability scanning (CVEs) and defensive review (Cybersecurity subagent).
 * All subagents must use the **Flash** model (`flash` or `inherit`) with dynamic reflection levels.
 * For **micro-tasks** (typos, 2-line styling tweaks, static string updates), apply changes directly with build and test validation without launching the full `/forge` pipeline.
