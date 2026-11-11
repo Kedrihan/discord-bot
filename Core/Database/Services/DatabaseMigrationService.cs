@@ -92,7 +92,7 @@ public class DatabaseMigrationService(
                     var existing = await context.MorningBriefingSettings.FindAsync([1], ct);
                     if (existing == null)
                     {
-                        existing = new MorningBriefingSettingsEntity { Id = 1 };
+                        existing = DatabaseDefaultDataSeeder.CreateDefaultMorningBriefingSettings();
                         context.MorningBriefingSettings.Add(existing);
                     }
 
@@ -122,7 +122,7 @@ public class DatabaseMigrationService(
 
         if (!await context.MorningBriefingSettings.AnyAsync(ct))
         {
-            context.MorningBriefingSettings.Add(new MorningBriefingSettingsEntity { Id = 1 });
+            context.MorningBriefingSettings.Add(DatabaseDefaultDataSeeder.CreateDefaultMorningBriefingSettings());
             await context.SaveChangesAsync(ct);
         }
     }
@@ -141,7 +141,7 @@ public class DatabaseMigrationService(
                     var existing = await context.TechWatchSettings.FindAsync([1], ct);
                     if (existing == null)
                     {
-                        existing = new TechWatchSettingsEntity { Id = 1 };
+                        existing = DatabaseDefaultDataSeeder.CreateDefaultTechWatchSettings();
                         context.TechWatchSettings.Add(existing);
                     }
 
@@ -172,7 +172,7 @@ public class DatabaseMigrationService(
 
         if (!await context.TechWatchSettings.AnyAsync(ct))
         {
-            context.TechWatchSettings.Add(new TechWatchSettingsEntity { Id = 1 });
+            context.TechWatchSettings.Add(DatabaseDefaultDataSeeder.CreateDefaultTechWatchSettings());
             await context.SaveChangesAsync(ct);
         }
     }
@@ -194,7 +194,7 @@ public class DatabaseMigrationService(
 
                     if (existing == null)
                     {
-                        existing = new TwitchSettingsEntity { Id = 1 };
+                        existing = DatabaseDefaultDataSeeder.CreateDefaultTwitchSettings();
                         context.TwitchSettings.Add(existing);
                     }
 
@@ -229,7 +229,7 @@ public class DatabaseMigrationService(
 
         if (!await context.TwitchSettings.AnyAsync(ct))
         {
-            context.TwitchSettings.Add(new TwitchSettingsEntity { Id = 1 });
+            context.TwitchSettings.Add(DatabaseDefaultDataSeeder.CreateDefaultTwitchSettings());
             await context.SaveChangesAsync(ct);
         }
     }

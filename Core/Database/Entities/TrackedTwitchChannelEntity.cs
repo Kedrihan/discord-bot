@@ -3,14 +3,14 @@ namespace DiscordBot.Core.Database.Entities;
 public class TrackedTwitchChannelEntity
 {
     public int Id { get; set; }
-    public int TwitchSettingsId { get; set; } = 1;
+    public int TwitchSettingsId { get; set; }
     public string TwitchUsername { get; set; } = string.Empty;
     public string DiscordChannelId { get; set; } = string.Empty;
-    public string CustomMessage { get; set; } = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
-    public bool IsEnabled { get; set; } = true;
-    public bool IsClipEnabled { get; set; } = false;
+    public string CustomMessage { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; }
+    public bool IsClipEnabled { get; set; }
     public string ClipDiscordChannelId { get; set; } = string.Empty;
-    public string ClipCustomMessage { get; set; } = "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}";
+    public string ClipCustomMessage { get; set; } = string.Empty;
 
     public TwitchSettingsEntity? TwitchSettings { get; set; }
 }

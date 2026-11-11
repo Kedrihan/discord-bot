@@ -1,5 +1,6 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
+using DiscordBot.Core.Database.Services;
 using DiscordBot.DTO;
 using Microsoft.EntityFrameworkCore;
 
@@ -60,7 +61,7 @@ public class TwitchConfigService(
 
         if (entity == null)
         {
-            entity = new TwitchSettingsEntity { Id = 1 };
+            entity = DatabaseDefaultDataSeeder.CreateDefaultTwitchSettings();
             context.TwitchSettings.Add(entity);
         }
 
