@@ -130,13 +130,16 @@ builder.Services.AddSingleton<SentArticlesHistoryService>();
 builder.Services.AddSingleton<NewsAggregatorService>();
 builder.Services.AddSingleton<GeminiSummarizerService>();
 builder.Services.AddSingleton<TechWatchService>();
-builder.Services.AddHostedService<TechWatchScheduler>();
+builder.Services.AddSingleton<ICalendarJob, TechWatchJob>();
 
 // Services dédiés au Morning Briefing Météo / Vélo
 builder.Services.AddSingleton<MorningBriefingConfigService>();
 builder.Services.AddSingleton<OpenMeteoService>();
 builder.Services.AddSingleton<MorningBriefingService>();
-builder.Services.AddHostedService<MorningBriefingScheduler>();
+builder.Services.AddSingleton<ICalendarJob, MorningBriefingJob>();
+
+// Moteur de planification unifié pour les tâches calendaires (Morning Briefing, Veille Tech)
+builder.Services.AddHostedService<CalendarSchedulerEngine>();
 
 // Services dédiés aux notifications Twitch Live et Clips
 builder.Services.AddTwitchLibEventSubWebsockets();
