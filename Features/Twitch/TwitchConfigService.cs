@@ -1,23 +1,23 @@
-﻿using System.IO.Abstractions;
-using System.Text.Json;
+﻿using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Entities;
 using DiscordBot.DTO;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Services;
 
 public class TwitchConfigService(
-    IFileSystem fileSystem,
-    IConfiguration configuration,
+    IDbContextFactory<BotDbContext> dbContextFactory,
     ILogger<TwitchConfigService> logger)
 {
     private readonly object _lock = new();
-    private readonly SemaphoreSlim _fileLock = new(1, 1);
-    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "twitch_settings.json");
     private TwitchSettingsDto? _settings;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    public TwitchConfigService(
+        IDbContextFactory<BotDbContext> dbContextFactory,
+        IConfiguration? configuration,
+        ILogger<TwitchConfigService> logger) : this(dbContextFactory, logger)
     {
-        WriteIndented = true
-    };
+    }
 
     public TwitchSettingsDto GetSettings()
     {
@@ -28,49 +28,82 @@ public class TwitchConfigService(
         }
     }
 
+    public async Task<TwitchSettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.TwitchSettings
+            .Include(s => s.Channels)
+            .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
+
+        if (entity != null)
+        {
+            var dto = MapEntityToDto(entity);
+            lock (_lock)
+            {
+                _settings = dto;
+            }
+            return dto;
+        }
+
+        return new TwitchSettingsDto();
+    }
+
     public async Task SaveSettingsAsync(TwitchSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
         newSettings.CheckIntervalSeconds = Math.Clamp(newSettings.CheckIntervalSeconds, 15, 3600);
         newSettings.ClipCheckIntervalSeconds = Math.Clamp(newSettings.ClipCheckIntervalSeconds, 15, 3600);
 
-        string json;
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.TwitchSettings
+            .Include(s => s.Channels)
+            .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
+
+        if (entity == null)
+        {
+            entity = new TwitchSettingsEntity { Id = 1 };
+            context.TwitchSettings.Add(entity);
+        }
+
+        entity.IsEnabled = newSettings.IsEnabled;
+        entity.IsClipsEnabled = newSettings.IsClipsEnabled;
+        entity.CheckIntervalSeconds = newSettings.CheckIntervalSeconds;
+        entity.ClipCheckIntervalSeconds = newSettings.ClipCheckIntervalSeconds;
+
+        context.TrackedTwitchChannels.RemoveRange(entity.Channels);
+        entity.Channels = newSettings.Channels.Select(c => new TrackedTwitchChannelEntity
+        {
+            TwitchSettingsId = 1,
+            TwitchUsername = c.TwitchUsername.Trim(),
+            DiscordChannelId = c.DiscordChannelId.Trim(),
+            CustomMessage = c.CustomMessage,
+            IsEnabled = c.IsEnabled,
+            IsClipEnabled = c.IsClipEnabled,
+            ClipDiscordChannelId = c.ClipDiscordChannelId.Trim(),
+            ClipCustomMessage = c.ClipCustomMessage
+        }).ToList();
+
+        await context.SaveChangesAsync(cancellationToken);
+
         lock (_lock)
         {
             _settings = newSettings;
-            json = JsonSerializer.Serialize(_settings, JsonOptions);
         }
 
-        var dir = fileSystem.Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir) && !fileSystem.Directory.Exists(dir))
-        {
-            fileSystem.Directory.CreateDirectory(dir);
-        }
-
-        await _fileLock.WaitAsync(cancellationToken);
-        try
-        {
-            await fileSystem.File.WriteAllTextAsync(_filePath, json, cancellationToken);
-            logger.LogInformation("Paramètres des notifications Twitch enregistrés dans {Path}", _filePath);
-        }
-        finally
-        {
-            _fileLock.Release();
-        }
+        logger.LogInformation("Paramètres des notifications Twitch enregistrés en base de données SQLite.");
     }
 
     private TwitchSettingsDto LoadSettings()
     {
         try
         {
-            if (fileSystem.File.Exists(_filePath))
+            using var context = dbContextFactory.CreateDbContext();
+            var entity = context.TwitchSettings
+                .Include(s => s.Channels)
+                .FirstOrDefault(s => s.Id == 1);
+
+            if (entity != null)
             {
-                var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<TwitchSettingsDto>(json);
-                if (loaded != null)
-                {
-                    ApplyEnvironmentFallbacks(loaded);
-                    return loaded;
-                }
+                return MapEntityToDto(entity);
             }
         }
         catch (Exception ex)
@@ -78,38 +111,24 @@ public class TwitchConfigService(
             logger.LogError(ex, "Erreur lors du chargement des paramètres Twitch. Utilisation des valeurs par défaut.");
         }
 
-        var defaultSettings = new TwitchSettingsDto();
-        ApplyEnvironmentFallbacks(defaultSettings);
-        return defaultSettings;
+        return new TwitchSettingsDto();
     }
 
-    private void ApplyEnvironmentFallbacks(TwitchSettingsDto target)
+    private static TwitchSettingsDto MapEntityToDto(TwitchSettingsEntity entity) => new()
     {
-        if (string.IsNullOrWhiteSpace(target.ClientId))
+        IsEnabled = entity.IsEnabled,
+        IsClipsEnabled = entity.IsClipsEnabled,
+        CheckIntervalSeconds = entity.CheckIntervalSeconds,
+        ClipCheckIntervalSeconds = entity.ClipCheckIntervalSeconds,
+        Channels = entity.Channels.Select(c => new TrackedTwitchChannelDto
         {
-            var envClientId = configuration["TWITCH_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_ID");
-            if (!string.IsNullOrWhiteSpace(envClientId))
-            {
-                target.ClientId = envClientId;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(target.ClientSecret))
-        {
-            var envClientSecret = configuration["TWITCH_CLIENT_SECRET"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_SECRET");
-            if (!string.IsNullOrWhiteSpace(envClientSecret))
-            {
-                target.ClientSecret = envClientSecret;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(target.UserAccessToken))
-        {
-            var envUserAccessToken = configuration["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN");
-            if (!string.IsNullOrWhiteSpace(envUserAccessToken))
-            {
-                target.UserAccessToken = envUserAccessToken;
-            }
-        }
-    }
+            TwitchUsername = c.TwitchUsername,
+            DiscordChannelId = c.DiscordChannelId,
+            CustomMessage = c.CustomMessage,
+            IsEnabled = c.IsEnabled,
+            IsClipEnabled = c.IsClipEnabled,
+            ClipDiscordChannelId = c.ClipDiscordChannelId,
+            ClipCustomMessage = c.ClipCustomMessage
+        }).ToList()
+    };
 }

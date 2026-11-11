@@ -5,7 +5,9 @@ using Google.GenAI.Types;
 
 namespace DiscordBot.Services;
 
-public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
+public class GeminiSummarizerService(
+    ILogger<GeminiSummarizerService> logger,
+    IConfiguration? configuration = null)
 {
     public async Task<string> SummarizeAndFormatArticlesAsync(List<NewsArticleDto> articles, TechWatchSettingsDto settings)
     {
@@ -14,12 +16,14 @@ public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
             return "Aucun nouvel article trouvé pour les sujets sélectionnés cette semaine.";
         }
 
-        // Si la clé Gemini est configurée, on utilise l'IA via le SDK officiel Google.GenAI
-        if (!string.IsNullOrWhiteSpace(settings.GeminiApiKey))
+        var apiKey = configuration?["GEMINI_API_KEY"] ?? System.Environment.GetEnvironmentVariable("GEMINI_API_KEY");
+
+        // Si la clé Gemini est configurée dans l'environnement, on utilise l'IA via le SDK officiel Google.GenAI
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
             try
             {
-                var summary = await CallGeminiAsync(articles, settings);
+                var summary = await CallGeminiAsync(articles, settings, apiKey);
                 if (!string.IsNullOrWhiteSpace(summary))
                 {
                     return summary;
@@ -35,7 +39,7 @@ public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
         return FormatDirectFallback(articles, settings.MaxArticles);
     }
 
-    private async Task<string> CallGeminiAsync(List<NewsArticleDto> articles, TechWatchSettingsDto settings)
+    private async Task<string> CallGeminiAsync(List<NewsArticleDto> articles, TechWatchSettingsDto settings, string apiKey)
     {
         var model = string.IsNullOrWhiteSpace(settings.GeminiModel) || settings.GeminiModel.StartsWith("gemini-1.") || settings.GeminiModel == "gemini-2.0-flash"
             ? "gemini-flash-latest"
@@ -61,7 +65,7 @@ Consignes :
 4. AUCUNE phrase d'introduction, AUCUNE conclusion, AUCUNE catégorie, AUCUN blabla. Uniquement la liste des bullet points.
 """;
 
-        var client = new Client(apiKey: settings.GeminiApiKey);
+        var client = new Client(apiKey: apiKey);
 
         GenerateContentResponse? response = null;
         try

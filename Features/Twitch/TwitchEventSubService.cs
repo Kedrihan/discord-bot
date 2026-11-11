@@ -10,7 +10,8 @@ public class TwitchEventSubService(
     TwitchConfigService configService,
     TwitchApiClient twitchApiClient,
     TwitchLiveService liveService,
-    ILogger<TwitchEventSubService> logger) : IAsyncDisposable
+    ILogger<TwitchEventSubService> logger,
+    IConfiguration? configuration = null) : IAsyncDisposable
 {
     private TwitchEventSubStatusDto _status = TwitchEventSubStatusDto.Disconnected;
     private readonly SemaphoreSlim _subLock = new(1, 1);
@@ -22,6 +23,13 @@ public class TwitchEventSubService(
     public TwitchEventSubStatusDto Status => _status;
     public bool IsConnected => _status == TwitchEventSubStatusDto.Connected;
     public string? SessionId => websocketClient.SessionId;
+
+    private string? GetClientId() => configuration?["TWITCH_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_ID") ?? twitchApiClient.GetClientId();
+    private string? GetClientSecret() => configuration?["TWITCH_CLIENT_SECRET"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_SECRET") ?? twitchApiClient.GetClientSecret();
+    private string? GetUserAccessToken() => configuration?["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN") ?? twitchApiClient.GetUserAccessToken();
+
+    private bool HasCredentials => !string.IsNullOrWhiteSpace(GetClientId()) && !string.IsNullOrWhiteSpace(GetClientSecret());
+    private bool HasUserAccessToken => !string.IsNullOrWhiteSpace(GetUserAccessToken());
 
     public void Initialize()
     {
@@ -41,7 +49,7 @@ public class TwitchEventSubService(
         Initialize();
 
         var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        if (!HasCredentials)
         {
             logger.LogWarning("Les identifiants Twitch API (Client ID / Client Secret) ne sont pas configurés. WebSocket EventSub non démarré.");
             _status = TwitchEventSubStatusDto.Disconnected;
@@ -57,7 +65,7 @@ public class TwitchEventSubService(
             return false;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.UserAccessToken))
+        if (!HasUserAccessToken)
         {
             logger.LogInformation("Aucun User Access Token Twitch configuré. Le WebSocket EventSub requiert un jeton utilisateur. Mode polling automatique actif.");
             _status = TwitchEventSubStatusDto.Disconnected;
@@ -112,10 +120,7 @@ public class TwitchEventSubService(
     public async Task<int> ResubscribeAllAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
-        if (!settings.IsEnabled ||
-            string.IsNullOrWhiteSpace(settings.ClientId) ||
-            string.IsNullOrWhiteSpace(settings.ClientSecret) ||
-            string.IsNullOrWhiteSpace(settings.UserAccessToken))
+        if (!settings.IsEnabled || !HasCredentials || !HasUserAccessToken)
         {
             if (IsConnected)
             {
@@ -181,17 +186,18 @@ public class TwitchEventSubService(
                     continue;
                 }
 
+                var userToken = GetUserAccessToken();
                 var onlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(
                     sessionId,
                     "stream.online",
                     userId,
-                    settings.UserAccessToken,
+                    userToken,
                     ct);
                 var offlineSub = await twitchApiClient.CreateEventSubSubscriptionAsync(
                     sessionId,
                     "stream.offline",
                     userId,
-                    settings.UserAccessToken,
+                    userToken,
                     ct);
 
                 if (onlineSub.Success && offlineSub.Success)

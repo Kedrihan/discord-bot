@@ -1,35 +1,30 @@
-﻿using System.IO.Abstractions;
-using System.Text.Json;
-using DiscordBot.DTO;
+﻿using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Services;
 
 public class TwitchClipHistoryService(
-    IFileSystem fileSystem,
+    IDbContextFactory<BotDbContext> dbContextFactory,
     TimeProvider timeProvider,
     ILogger<TwitchClipHistoryService> logger)
 {
-    private readonly object _lock = new();
-    private readonly SemaphoreSlim _fileLock = new(1, 1);
-    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "twitch_clips_history.json");
-    private bool _isLoaded;
-    private readonly HashSet<string> _seenClipIds = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _initializedBroadcasters = new(StringComparer.OrdinalIgnoreCase);
-    private List<TwitchClipHistoryItemDto> _items = [];
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
+    private const int MaxClipsRetained = 5000;
 
     public bool IsClipSeen(string clipId)
     {
         if (string.IsNullOrWhiteSpace(clipId)) return false;
 
-        lock (_lock)
+        try
         {
-            EnsureLoaded();
-            return _seenClipIds.Contains(clipId.Trim());
+            var trimmed = clipId.Trim();
+            using var context = dbContextFactory.CreateDbContext();
+            return context.TwitchClips.Any(c => c.ClipId == trimmed);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification du clip : {ClipId}", clipId);
+            return false;
         }
     }
 
@@ -37,10 +32,16 @@ public class TwitchClipHistoryService(
     {
         if (string.IsNullOrWhiteSpace(broadcasterId)) return false;
 
-        lock (_lock)
+        try
         {
-            EnsureLoaded();
-            return _initializedBroadcasters.Contains(broadcasterId.Trim());
+            var trimmed = broadcasterId.Trim();
+            using var context = dbContextFactory.CreateDbContext();
+            return context.TwitchInitializedBroadcasters.Any(b => b.BroadcasterId == trimmed);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification de l'initialisation du broadcaster : {BroadcasterId}", broadcasterId);
+            return false;
         }
     }
 
@@ -48,30 +49,46 @@ public class TwitchClipHistoryService(
     {
         if (string.IsNullOrWhiteSpace(broadcasterId)) return;
 
-        string json;
-        lock (_lock)
-        {
-            EnsureLoaded();
-            var trimmedBroadcasterId = broadcasterId.Trim();
-            _initializedBroadcasters.Add(trimmedBroadcasterId);
+        var trimmedBroadcasterId = broadcasterId.Trim();
+        var now = timeProvider.GetUtcNow();
 
-            var now = timeProvider.GetUtcNow();
+        try
+        {
+            await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+
+            var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedBroadcasterId], ct);
+            if (existingBroadcaster == null)
+            {
+                context.TwitchInitializedBroadcasters.Add(new TwitchInitializedBroadcasterEntity
+                {
+                    BroadcasterId = trimmedBroadcasterId,
+                    InitializedAt = now
+                });
+            }
+
             foreach (var clipId in existingClipIds)
             {
                 if (string.IsNullOrWhiteSpace(clipId)) continue;
                 var trimmed = clipId.Trim();
-                if (_seenClipIds.Add(trimmed))
+                var existingClip = await context.TwitchClips.FindAsync([trimmed], ct);
+                if (existingClip == null)
                 {
-                    _items.Add(new TwitchClipHistoryItemDto(trimmed, trimmedBroadcasterId, now));
+                    context.TwitchClips.Add(new TwitchClipHistoryEntity
+                    {
+                        ClipId = trimmed,
+                        BroadcasterId = trimmedBroadcasterId,
+                        DiscoveredAt = now
+                    });
                 }
             }
 
-            PruneOldClips(now);
-            json = SerializeStore();
+            await PruneOldClipsAndSaveAsync(context, now, ct);
+            logger.LogInformation("Broadcaster Twitch {BroadcasterId} initialisé avec protection contre le cold-start.", broadcasterId);
         }
-
-        await SaveToFileAsync(json, ct);
-        logger.LogInformation("Broadcaster Twitch {BroadcasterId} initialisé avec protection contre le cold-start.", broadcasterId);
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de l'initialisation du broadcaster {BroadcasterId}.", broadcasterId);
+        }
     }
 
     public async Task MarkClipsAsSeenAsync(IEnumerable<string> clipIds, string broadcasterId, CancellationToken ct = default)
@@ -79,141 +96,69 @@ public class TwitchClipHistoryService(
         var clipIdList = clipIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).ToList();
         if (clipIdList.Count == 0 && string.IsNullOrWhiteSpace(broadcasterId)) return;
 
-        string json;
-        lock (_lock)
-        {
-            EnsureLoaded();
-            var trimmedBroadcasterId = broadcasterId?.Trim() ?? string.Empty;
-            if (!string.IsNullOrEmpty(trimmedBroadcasterId))
-            {
-                _initializedBroadcasters.Add(trimmedBroadcasterId);
-            }
-
-            var now = timeProvider.GetUtcNow();
-            foreach (var clipId in clipIdList)
-            {
-                if (_seenClipIds.Add(clipId))
-                {
-                    _items.Add(new TwitchClipHistoryItemDto(clipId, trimmedBroadcasterId, now));
-                }
-            }
-
-            PruneOldClips(now);
-            json = SerializeStore();
-        }
-
-        await SaveToFileAsync(json, ct);
-    }
-
-    private void PruneOldClips(DateTimeOffset now)
-    {
-        var cutoff = now.AddDays(-30);
-        var removed = _items.RemoveAll(item => item.DiscoveredAt < cutoff);
-        if (_items.Count > 5000)
-        {
-            _items = _items.TakeLast(5000).ToList();
-            removed++;
-        }
-
-        if (removed > 0)
-        {
-            _seenClipIds.Clear();
-            foreach (var item in _items)
-            {
-                _seenClipIds.Add(item.ClipId);
-            }
-        }
-    }
-
-    private string SerializeStore()
-    {
-        var store = new TwitchClipHistoryStore
-        {
-            InitializedBroadcasters = [.. _initializedBroadcasters],
-            Clips = _items
-        };
-        return JsonSerializer.Serialize(store, JsonOptions);
-    }
-
-    private void EnsureLoaded()
-    {
-        if (_isLoaded) return;
+        var trimmedBroadcasterId = broadcasterId?.Trim() ?? string.Empty;
+        var now = timeProvider.GetUtcNow();
 
         try
         {
-            if (fileSystem.File.Exists(_filePath))
+            await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+
+            if (!string.IsNullOrEmpty(trimmedBroadcasterId))
             {
-                var json = fileSystem.File.ReadAllText(_filePath);
-                try
+                var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedBroadcasterId], ct);
+                if (existingBroadcaster == null)
                 {
-                    var store = JsonSerializer.Deserialize<TwitchClipHistoryStore>(json, JsonOptions);
-                    if (store != null)
+                    context.TwitchInitializedBroadcasters.Add(new TwitchInitializedBroadcasterEntity
                     {
-                        _items = store.Clips ?? [];
-                        foreach (var b in store.InitializedBroadcasters ?? [])
-                        {
-                            if (!string.IsNullOrWhiteSpace(b)) _initializedBroadcasters.Add(b.Trim());
-                        }
-                        foreach (var item in _items)
-                        {
-                            if (!string.IsNullOrWhiteSpace(item.ClipId)) _seenClipIds.Add(item.ClipId.Trim());
-                            if (!string.IsNullOrWhiteSpace(item.BroadcasterId)) _initializedBroadcasters.Add(item.BroadcasterId.Trim());
-                        }
-                        _isLoaded = true;
-                        return;
-                    }
-                }
-                catch
-                {
-                    // Fallback to array of items
-                    var items = JsonSerializer.Deserialize<List<TwitchClipHistoryItemDto>>(json, JsonOptions);
-                    if (items != null)
-                    {
-                        _items = items;
-                        foreach (var item in _items)
-                        {
-                            if (!string.IsNullOrWhiteSpace(item.ClipId)) _seenClipIds.Add(item.ClipId.Trim());
-                            if (!string.IsNullOrWhiteSpace(item.BroadcasterId)) _initializedBroadcasters.Add(item.BroadcasterId.Trim());
-                        }
-                        _isLoaded = true;
-                        return;
-                    }
+                        BroadcasterId = trimmedBroadcasterId,
+                        InitializedAt = now
+                    });
                 }
             }
+
+            foreach (var clipId in clipIdList)
+            {
+                var existingClip = await context.TwitchClips.FindAsync([clipId], ct);
+                if (existingClip == null)
+                {
+                    context.TwitchClips.Add(new TwitchClipHistoryEntity
+                    {
+                        ClipId = clipId,
+                        BroadcasterId = trimmedBroadcasterId,
+                        DiscoveredAt = now
+                    });
+                }
+            }
+
+            await PruneOldClipsAndSaveAsync(context, now, ct);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors du chargement de l'historique des clips Twitch. Réinitialisation.");
-        }
-
-        _items = [];
-        _seenClipIds.Clear();
-        _initializedBroadcasters.Clear();
-        _isLoaded = true;
-    }
-
-    private async Task SaveToFileAsync(string json, CancellationToken ct)
-    {
-        var dir = fileSystem.Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir) && !fileSystem.Directory.Exists(dir))
-        {
-            fileSystem.Directory.CreateDirectory(dir);
-        }
-
-        await _fileLock.WaitAsync(ct);
-        try
-        {
-            await fileSystem.File.WriteAllTextAsync(_filePath, json, ct);
-        }
-        finally
-        {
-            _fileLock.Release();
+            logger.LogError(ex, "Erreur lors du marquage des clips comme vus pour le broadcaster {BroadcasterId}.", broadcasterId);
         }
     }
 
-    private sealed class TwitchClipHistoryStore
+    private static async Task PruneOldClipsAndSaveAsync(BotDbContext context, DateTimeOffset now, CancellationToken ct)
     {
-        public List<string> InitializedBroadcasters { get; set; } = [];
-        public List<TwitchClipHistoryItemDto> Clips { get; set; } = [];
+        // Nettoyage des clips de plus de 30 jours
+        var cutoff = now.AddDays(-30);
+        var oldClips = context.TwitchClips.Where(c => c.DiscoveredAt < cutoff);
+        context.TwitchClips.RemoveRange(oldClips);
+
+        await context.SaveChangesAsync(ct);
+
+        // Plafonnement à MaxClipsRetained (5000)
+        var totalCount = await context.TwitchClips.CountAsync(ct);
+        if (totalCount > MaxClipsRetained)
+        {
+            var excess = totalCount - MaxClipsRetained;
+            var clipsToRemove = await context.TwitchClips
+                .OrderBy(c => c.DiscoveredAt)
+                .Take(excess)
+                .ToListAsync(ct);
+
+            context.TwitchClips.RemoveRange(clipsToRemove);
+            await context.SaveChangesAsync(ct);
+        }
     }
 }

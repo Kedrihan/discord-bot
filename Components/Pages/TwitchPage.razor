@@ -8,6 +8,7 @@
 @inject TwitchStateService StateService
 @inject TwitchEventSubService EventSubService
 @inject DiscordSocketClient DiscordClient
+@inject IConfiguration Configuration
 
 <div class="container py-2" style="max-width: 1000px;">
     <!-- En-tête -->
@@ -42,41 +43,53 @@
                 </h5>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Twitch Client ID</label>
-                    <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
-                           placeholder="ex: gp762nuuoqcoxypju8c569th9wz7q5"
-                           @bind="settings.ClientId" />
+                    <label class="form-label small fw-semibold text-secondary d-block">Twitch Client ID</label>
+                    @if (!string.IsNullOrWhiteSpace(TwitchClientId))
+                    {
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                            <i class="bi bi-shield-check me-1"></i> Configuré dans .env
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Non configuré (TWITCH_CLIENT_ID manquant dans .env)
+                        </span>
+                    }
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Twitch Client Secret</label>
-                    <div class="input-group">
-                        <input type="@(showSecret ? "text" : "password")"
-                               class="form-control bg-dark text-light border-secondary font-monospace"
-                               placeholder="ex: abcd1234efgh5678ijkl"
-                               @bind="settings.ClientSecret" />
-                        <button class="btn btn-outline-secondary" type="button" @onclick="() => showSecret = !showSecret">
-                            <i class="bi @(showSecret ? "bi-eye-slash" : "bi-eye")"></i>
-                        </button>
-                    </div>
-                    <div class="form-text text-secondary small">
-                        Peuvent également être définis via <code>TWITCH_CLIENT_ID</code> et <code>TWITCH_CLIENT_SECRET</code> (.env).
-                    </div>
+                    <label class="form-label small fw-semibold text-secondary d-block">Twitch Client Secret</label>
+                    @if (!string.IsNullOrWhiteSpace(TwitchClientSecret))
+                    {
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                            <i class="bi bi-shield-check me-1"></i> Configuré dans .env
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Non configuré (TWITCH_CLIENT_SECRET manquant dans .env)
+                        </span>
+                    }
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Twitch User Access Token (OAuth)</label>
-                    <div class="input-group">
-                        <input type="@(showUserToken ? "text" : "password")"
-                               class="form-control bg-dark text-light border-secondary font-monospace"
-                               placeholder="ex: oauth:abcd1234efgh5678ijkl ou token"
-                               @bind="settings.UserAccessToken" />
-                        <button class="btn btn-outline-secondary" type="button" @onclick="() => showUserToken = !showUserToken">
-                            <i class="bi @(showUserToken ? "bi-eye-slash" : "bi-eye")"></i>
-                        </button>
-                    </div>
-                    <div class="form-text text-secondary small">
-                        Requis pour le WebSocket EventSub temps réel (&lt; 1s). Peut être généré sans scope sur <a href="https://twitchtokengenerator.com" target="_blank" rel="noopener noreferrer" class="text-info text-decoration-none">https://twitchtokengenerator.com</a>. En l'absence de ce jeton, le mode polling automatique est actif.
+                    <label class="form-label small fw-semibold text-secondary d-block">Twitch User Access Token (OAuth)</label>
+                    @if (!string.IsNullOrWhiteSpace(TwitchUserAccessToken))
+                    {
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                            <i class="bi bi-shield-check me-1"></i> Configuré dans .env (Temps réel WebSocket EventSub actif)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2">
+                            <i class="bi bi-info-circle me-1"></i> Non configuré (Mode Polling actif)
+                        </span>
+                    }
+                    <div class="form-text text-secondary small mt-1">
+                        Défini dans <code>.env</code> (TWITCH_USER_ACCESS_TOKEN). Requis pour le WebSocket EventSub temps réel (&lt; 1s).
                     </div>
                 </div>
 
@@ -117,7 +130,7 @@
                                 Alertes instantanées poussées par Twitch via WebSocket.
                             </div>
                         }
-                        else if (!string.IsNullOrWhiteSpace(settings.UserAccessToken) && (EventSubService.Status == TwitchEventSubStatusDto.Connecting || EventSubService.Status == TwitchEventSubStatusDto.Reconnecting))
+                        else if (HasUserAccessToken && (EventSubService.Status == TwitchEventSubStatusDto.Connecting || EventSubService.Status == TwitchEventSubStatusDto.Reconnecting))
                         {
                             <div class="d-flex align-items-center gap-2 mb-1">
                                 <span class="spinner-border spinner-border-sm text-warning" role="status"></span>
@@ -486,8 +499,13 @@
 
 @code {
     private TwitchSettingsDto settings = new();
-    private bool showSecret = false;
-    private bool showUserToken = false;
+    private string? TwitchClientId => Configuration["TWITCH_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_ID");
+    private string? TwitchClientSecret => Configuration["TWITCH_CLIENT_SECRET"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_SECRET");
+    private string? TwitchUserAccessToken => Configuration["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN");
+
+    private bool HasCredentials => !string.IsNullOrWhiteSpace(TwitchClientId) && !string.IsNullOrWhiteSpace(TwitchClientSecret);
+    private bool HasUserAccessToken => !string.IsNullOrWhiteSpace(TwitchUserAccessToken);
+
     private bool isChecking = false;
     private bool isCheckingClips = false;
     private readonly HashSet<string> testingChannels = new(StringComparer.OrdinalIgnoreCase);
@@ -516,7 +534,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var hasCredentials = !string.IsNullOrWhiteSpace(settings.ClientId) && !string.IsNullOrWhiteSpace(settings.ClientSecret);
+        var hasCredentials = HasCredentials;
         if (hasCredentials && settings.Channels.Count > 0)
         {
             _ = Task.Run(async () =>
@@ -708,7 +726,7 @@
             isSuccessFeedback = true;
             feedbackMessage = "Configuration Twitch enregistrée avec succès !";
 
-            var hasCredentials = !string.IsNullOrWhiteSpace(settings.ClientId) && !string.IsNullOrWhiteSpace(settings.ClientSecret);
+            var hasCredentials = HasCredentials;
             if (hasCredentials && settings.Channels.Count > 0)
             {
                 _ = Task.Run(async () =>

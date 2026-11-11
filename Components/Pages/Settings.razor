@@ -4,6 +4,7 @@
 @inject TechWatchConfigService ConfigService
 @inject TechWatchService TechWatchService
 @inject DiscordSocketClient DiscordClient
+@inject IConfiguration Configuration
 
 <div class="container py-2" style="max-width: 900px;">
     <!-- En-tête -->
@@ -177,16 +178,22 @@
 
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label small fw-semibold text-secondary">Clé API Google Gemini</label>
-                        <div class="input-group">
-                            <input type="@(showApiKey ? "text" : "password")" class="form-control bg-dark text-light border-secondary font-monospace" placeholder="AIzaSy..." @bind="settings.GeminiApiKey" />
-                            <button class="btn btn-outline-secondary" type="button" @onclick="() => showApiKey = !showApiKey">
-                                <i class="bi @(showApiKey ? "bi-eye-slash" : "bi-eye")"></i>
-                            </button>
-                        </div>
-                        <div class="form-text text-secondary small">
-                            Obtenez votre clé gratuitement sur <a href="https://aistudio.google.com/apikey" target="_blank" class="text-info text-decoration-none">Google AI Studio</a>.
-                            <em>(Si vide, le bot sélectionne et formate les articles sans passer par l'IA).</em>
+                        <label class="form-label small fw-semibold text-secondary d-block">Clé API Google Gemini</label>
+                        @if (isGeminiConfigured)
+                        {
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                                <i class="bi bi-shield-check me-1"></i> Configuré dans .env
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-2">
+                                <i class="bi bi-exclamation-triangle me-1"></i> Non configuré (Variable GEMINI_API_KEY manquante dans .env)
+                            </span>
+                        }
+                        <div class="form-text text-secondary small mt-1">
+                            Définie dans le fichier <code>.env</code> (GEMINI_API_KEY).
+                            <em>(Si absente, le bot sélectionne et formate les articles sans passer par l'IA).</em>
                         </div>
                     </div>
 
@@ -234,7 +241,7 @@
     private TechWatchSettingsDto settings = new();
     private string? newTopic;
     private string? newRssFeedUrl;
-    private bool showApiKey = false;
+    private bool isGeminiConfigured => !string.IsNullOrWhiteSpace(Configuration["GEMINI_API_KEY"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY"));
     private bool isTesting = false;
     private string? feedbackMessage;
     private bool isSuccessFeedback = true;

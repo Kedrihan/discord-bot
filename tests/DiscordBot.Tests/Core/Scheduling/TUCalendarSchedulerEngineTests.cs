@@ -1,8 +1,7 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using DiscordBot.DTO;
+﻿using DiscordBot.DTO;
 using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -275,8 +274,8 @@ public class TUCalendarSchedulerEngineTests
     public void MorningBriefingJob_GetSchedule_ShouldReflectConfigServiceSettings()
     {
         // Arrange
-        var fileSystem = new MockFileSystem();
-        var configService = new MorningBriefingConfigService(fileSystem, NullLogger<MorningBriefingConfigService>.Instance);
+        using var dbFactory = new TestBotDbContextFactory();
+        var configService = new MorningBriefingConfigService(dbFactory, NullLogger<MorningBriefingConfigService>.Instance);
         var job = new MorningBriefingJob(configService, null!);
 
         // Act
@@ -293,9 +292,8 @@ public class TUCalendarSchedulerEngineTests
     public void TechWatchJob_GetSchedule_ShouldReflectConfigServiceSettings()
     {
         // Arrange
-        var fileSystem = new MockFileSystem();
-        var configuration = new ConfigurationBuilder().Build();
-        var configService = new TechWatchConfigService(fileSystem, configuration, NullLogger<TechWatchConfigService>.Instance);
+        using var dbFactory = new TestBotDbContextFactory();
+        var configService = new TechWatchConfigService(dbFactory, NullLogger<TechWatchConfigService>.Instance);
         var job = new TechWatchJob(configService, null!);
 
         // Act

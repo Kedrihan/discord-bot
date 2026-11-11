@@ -27,7 +27,6 @@ public class TechWatchSettingsDto
     public List<string> CustomRssFeeds { get; set; } = [];
 
     // IA & Formatage
-    public string GeminiApiKey { get; set; } = "";
     public string GeminiModel { get; set; } = "gemini-flash-latest";
     public int MaxArticles { get; set; } = 7;
     public bool TranslateToFrench { get; set; } = true;

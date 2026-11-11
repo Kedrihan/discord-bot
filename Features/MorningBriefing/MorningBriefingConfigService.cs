@@ -1,21 +1,16 @@
-﻿using System.IO.Abstractions;
-using System.Text.Json;
+﻿using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Entities;
 using DiscordBot.DTO;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Services;
 
 public class MorningBriefingConfigService(
-    IFileSystem fileSystem,
+    IDbContextFactory<BotDbContext> dbContextFactory,
     ILogger<MorningBriefingConfigService> logger)
 {
     private readonly object _lock = new();
-    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "morning_briefing_settings.json");
     private MorningBriefingSettingsDto? _settings;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
 
     public MorningBriefingSettingsDto GetSettings()
     {
@@ -26,37 +21,53 @@ public class MorningBriefingConfigService(
         }
     }
 
+    public async Task<MorningBriefingSettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.MorningBriefingSettings.FindAsync([1], cancellationToken);
+        if (entity != null)
+        {
+            var dto = MapEntityToDto(entity);
+            lock (_lock)
+            {
+                _settings = dto;
+            }
+            return dto;
+        }
+
+        return new MorningBriefingSettingsDto();
+    }
+
     public async Task SaveSettingsAsync(MorningBriefingSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
-        string json;
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.MorningBriefingSettings.FindAsync([1], cancellationToken);
+        if (entity == null)
+        {
+            entity = new MorningBriefingSettingsEntity { Id = 1 };
+            context.MorningBriefingSettings.Add(entity);
+        }
+
+        MapDtoToEntity(newSettings, entity);
+        await context.SaveChangesAsync(cancellationToken);
+
         lock (_lock)
         {
             _settings = newSettings;
-            json = JsonSerializer.Serialize(_settings, JsonOptions);
         }
 
-        var dir = fileSystem.Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir) && !fileSystem.Directory.Exists(dir))
-        {
-            fileSystem.Directory.CreateDirectory(dir);
-        }
-
-        await fileSystem.File.WriteAllTextAsync(_filePath, json, cancellationToken);
-        logger.LogInformation("Paramètres du Morning Briefing enregistrés dans {Path}", _filePath);
+        logger.LogInformation("Paramètres du Morning Briefing enregistrés en base de données SQLite.");
     }
 
     private MorningBriefingSettingsDto LoadSettings()
     {
         try
         {
-            if (fileSystem.File.Exists(_filePath))
+            using var context = dbContextFactory.CreateDbContext();
+            var entity = context.MorningBriefingSettings.Find(1);
+            if (entity != null)
             {
-                var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<MorningBriefingSettingsDto>(json);
-                if (loaded != null)
-                {
-                    return loaded;
-                }
+                return MapEntityToDto(entity);
             }
         }
         catch (Exception ex)
@@ -65,5 +76,37 @@ public class MorningBriefingConfigService(
         }
 
         return new MorningBriefingSettingsDto();
+    }
+
+    private static MorningBriefingSettingsDto MapEntityToDto(MorningBriefingSettingsEntity entity) => new()
+    {
+        IsEnabled = entity.IsEnabled,
+        ScheduleDays = [.. entity.ScheduleDays],
+        ScheduleTime = entity.ScheduleTime,
+        DestinationType = entity.DestinationType,
+        TargetId = entity.TargetId,
+        Address = entity.Address,
+        Latitude = entity.Latitude,
+        Longitude = entity.Longitude,
+        MorningStartHour = entity.MorningStartHour,
+        MorningEndHour = entity.MorningEndHour,
+        EveningStartHour = entity.EveningStartHour,
+        EveningEndHour = entity.EveningEndHour
+    };
+
+    private static void MapDtoToEntity(MorningBriefingSettingsDto dto, MorningBriefingSettingsEntity entity)
+    {
+        entity.IsEnabled = dto.IsEnabled;
+        entity.ScheduleDays = [.. dto.ScheduleDays];
+        entity.ScheduleTime = dto.ScheduleTime;
+        entity.DestinationType = dto.DestinationType;
+        entity.TargetId = dto.TargetId;
+        entity.Address = dto.Address;
+        entity.Latitude = dto.Latitude;
+        entity.Longitude = dto.Longitude;
+        entity.MorningStartHour = dto.MorningStartHour;
+        entity.MorningEndHour = dto.MorningEndHour;
+        entity.EveningStartHour = dto.EveningStartHour;
+        entity.EveningEndHour = dto.EveningEndHour;
     }
 }

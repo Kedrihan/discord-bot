@@ -469,7 +469,7 @@ public class TwitchLiveService(
     public async Task RefreshLiveStatusAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        if (!twitchApiClient.HasCredentials)
         {
             return;
         }

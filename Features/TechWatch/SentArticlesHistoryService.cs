@@ -1,121 +1,76 @@
-using System.IO.Abstractions;
-using System.Text.Json;
+using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Services;
 
-public class SentArticleRecord
-{
-    public string Url { get; set; } = string.Empty;
-    public DateTimeOffset SentAt { get; set; }
-}
-
 public class SentArticlesHistoryService(
-    IFileSystem fileSystem,
+    IDbContextFactory<BotDbContext> dbContextFactory,
     TimeProvider timeProvider,
     ILogger<SentArticlesHistoryService> logger)
 {
-    private readonly object _lock = new();
-    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "sent_articles.json");
-    private List<SentArticleRecord> _records = [];
-
     public void Initialize()
     {
-        var dataDir = fileSystem.Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dataDir) && !fileSystem.Directory.Exists(dataDir))
-        {
-            fileSystem.Directory.CreateDirectory(dataDir);
-        }
-
-        Load();
+        // Initialisation assurée par DatabaseMigrationService et EF Core
     }
 
     public bool IsAlreadySent(string url)
     {
-        EnsureInitialized();
-        lock (_lock)
+        if (string.IsNullOrWhiteSpace(url)) return false;
+
+        try
         {
             var normalized = NormalizeUrl(url);
-            return _records.Any(r => NormalizeUrl(r.Url) == normalized);
+            using var context = dbContextFactory.CreateDbContext();
+            return context.SentArticles.Any(r => r.Url == normalized);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification de l'article envoyé : {Url}", url);
+            return false;
         }
     }
 
     public async Task MarkAsSentAsync(IEnumerable<string> urls, CancellationToken cancellationToken = default)
     {
-        EnsureInitialized();
         var now = timeProvider.GetUtcNow();
 
-        lock (_lock)
+        try
         {
+            await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
             foreach (var url in urls)
             {
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    continue;
-                }
+                if (string.IsNullOrWhiteSpace(url)) continue;
 
-                _records.Add(new SentArticleRecord
+                var normalized = NormalizeUrl(url);
+                var existing = await context.SentArticles.FindAsync([normalized], cancellationToken);
+                if (existing == null)
                 {
-                    Url = url.Trim(),
-                    SentAt = now
-                });
+                    context.SentArticles.Add(new SentArticleEntity
+                    {
+                        Url = normalized,
+                        SentAt = now
+                    });
+                }
+                else
+                {
+                    existing.SentAt = now;
+                }
             }
 
             // Nettoyage des articles de plus de 30 jours
             var cutoff = now.AddDays(-30);
-            _records.RemoveAll(r => r.SentAt < cutoff);
-        }
+            var oldArticles = context.SentArticles.Where(r => r.SentAt < cutoff);
+            context.SentArticles.RemoveRange(oldArticles);
 
-        await SaveAsync(cancellationToken);
-    }
-
-    private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/').ToLowerInvariant();
-
-    private void EnsureInitialized()
-    {
-        if (fileSystem.File.Exists(_filePath) || _records.Count > 0)
-        {
-            return;
-        }
-
-        Initialize();
-    }
-
-    private void Load()
-    {
-        try
-        {
-            if (!fileSystem.File.Exists(_filePath))
-            {
-                _records = [];
-                return;
-            }
-
-            var json = fileSystem.File.ReadAllText(_filePath);
-            var loaded = JsonSerializer.Deserialize<List<SentArticleRecord>>(json);
-            _records = loaded ?? [];
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Impossible de charger l'historique des articles envoyés. Réinitialisation.");
-            _records = [];
-        }
-    }
-
-    private async Task SaveAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            string json;
-            lock (_lock)
-            {
-                json = JsonSerializer.Serialize(_records, new JsonSerializerOptions { WriteIndented = true });
-            }
-
-            await fileSystem.File.WriteAllTextAsync(_filePath, json, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de l'enregistrement de l'historique des articles envoyés.");
         }
     }
+
+    private static string NormalizeUrl(string url) => url.Trim().TrimEnd('/').ToLowerInvariant();
 }

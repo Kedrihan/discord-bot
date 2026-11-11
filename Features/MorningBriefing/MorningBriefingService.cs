@@ -12,7 +12,8 @@ public class MorningBriefingService(
     MorningBriefingConfigService configService,
     TechWatchConfigService techWatchConfigService,
     OpenMeteoService weatherService,
-    ILogger<MorningBriefingService> logger)
+    ILogger<MorningBriefingService> logger,
+    IConfiguration? configuration = null)
 {
     private record VerdictVisual(Color Color, string Icon);
 
@@ -96,7 +97,7 @@ public class MorningBriefingService(
 
     private async Task<MorningBriefingResultDto> AnalyzeWithGeminiAsync(CommuteSlotSummaryDto aller, CommuteSlotSummaryDto retour, MorningBriefingSettingsDto settings)
     {
-        var apiKey = techWatchConfigService.GetSettings().GeminiApiKey;
+        var apiKey = configuration?["GEMINI_API_KEY"] ?? System.Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         var model = techWatchConfigService.GetSettings().GeminiModel;
         if (string.IsNullOrWhiteSpace(model) || model.StartsWith("gemini-1.") || model == "gemini-2.0-flash")
         {

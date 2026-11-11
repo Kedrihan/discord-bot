@@ -12,13 +12,23 @@ public class TwitchApiClient(
     HttpClient httpClient,
     TwitchConfigService configService,
     TimeProvider timeProvider,
-    ILogger<TwitchApiClient> logger)
+    ILogger<TwitchApiClient> logger,
+    IConfiguration? configuration = null)
 {
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
     private string? _cachedToken;
     private DateTimeOffset _tokenExpiresAt = DateTimeOffset.MinValue;
     private readonly ConcurrentDictionary<string, (string Url, DateTimeOffset CachedAt)> _avatarCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _userIdCache = new(StringComparer.OrdinalIgnoreCase);
+
+    public TwitchConfigService ConfigService => configService;
+
+    public string? GetClientId() => configuration?["TWITCH_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_ID");
+    public string? GetClientSecret() => configuration?["TWITCH_CLIENT_SECRET"] ?? Environment.GetEnvironmentVariable("TWITCH_CLIENT_SECRET");
+    public string? GetUserAccessToken() => configuration?["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN");
+
+    public bool HasCredentials => !string.IsNullOrWhiteSpace(GetClientId()) && !string.IsNullOrWhiteSpace(GetClientSecret());
+    public bool HasUserAccessToken => !string.IsNullOrWhiteSpace(GetUserAccessToken());
 
     public async Task<IReadOnlyList<TwitchStreamInfoDto>> GetStreamsAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
     {
@@ -29,14 +39,15 @@ public class TwitchApiClient(
 
         if (logins.Count == 0) return [];
 
-        var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        var clientId = GetClientId();
+        var clientSecret = GetClientSecret();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             logger.LogWarning("Les identifiants de l'API Twitch (Client ID ou Client Secret) ne sont pas configurés.");
             return [];
         }
 
-        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        var token = await GetValidAccessTokenAsync(clientId, clientSecret, ct);
         if (string.IsNullOrEmpty(token)) return [];
 
         var results = new List<TwitchStreamInfoDto>();
@@ -50,7 +61,7 @@ public class TwitchApiClient(
                 var requestUri = $"https://api.twitch.tv/helix/streams?{queryParams}";
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
-                request.Headers.Add("Client-Id", settings.ClientId);
+                request.Headers.Add("Client-Id", clientId);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 using var response = await httpClient.SendAsync(request, ct);
@@ -102,14 +113,15 @@ public class TwitchApiClient(
     {
         if (string.IsNullOrWhiteSpace(broadcasterUserId)) return [];
 
-        var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        var clientId = GetClientId();
+        var clientSecret = GetClientSecret();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             logger.LogWarning("Les identifiants de l'API Twitch (Client ID ou Client Secret) ne sont pas configurés.");
             return [];
         }
 
-        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        var token = await GetValidAccessTokenAsync(clientId, clientSecret, ct);
         if (string.IsNullOrEmpty(token)) return [];
 
         var clampedFirst = Math.Clamp(first, 1, 100);
@@ -124,7 +136,7 @@ public class TwitchApiClient(
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
-            request.Headers.Add("Client-Id", settings.ClientId);
+            request.Headers.Add("Client-Id", clientId);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using var response = await httpClient.SendAsync(request, ct);
@@ -176,14 +188,15 @@ public class TwitchApiClient(
 
         if (logins.Count == 0) return [];
 
-        var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        var clientId = GetClientId();
+        var clientSecret = GetClientSecret();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             logger.LogWarning("Les identifiants de l'API Twitch (Client ID ou Client Secret) ne sont pas configurés.");
             return [];
         }
 
-        var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
+        var token = await GetValidAccessTokenAsync(clientId, clientSecret, ct);
         if (string.IsNullOrEmpty(token)) return [];
 
         var results = new List<TwitchUserInfoDto>();
@@ -197,7 +210,7 @@ public class TwitchApiClient(
                 var requestUri = $"https://api.twitch.tv/helix/users?{queryParams}";
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
-                request.Headers.Add("Client-Id", settings.ClientId);
+                request.Headers.Add("Client-Id", clientId);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
                 using var response = await httpClient.SendAsync(request, ct);
@@ -290,17 +303,19 @@ public class TwitchApiClient(
             return new TwitchSubscriptionResultDto(false, null, "L'identifiant Twitch du diffuseur est requis.");
         }
 
-        var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        var clientId = GetClientId();
+        var clientSecret = GetClientSecret();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             return new TwitchSubscriptionResultDto(false, null, "Identifiants Twitch non configurés.");
         }
 
+        var envUserToken = GetUserAccessToken();
         var token = !string.IsNullOrWhiteSpace(userAccessToken)
             ? userAccessToken.Trim()
-            : (!string.IsNullOrWhiteSpace(settings.UserAccessToken)
-                ? settings.UserAccessToken.Trim()
-                : await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct));
+            : (!string.IsNullOrWhiteSpace(envUserToken)
+                ? envUserToken.Trim()
+                : await GetValidAccessTokenAsync(clientId, clientSecret, ct));
 
         if (string.IsNullOrEmpty(token))
         {
@@ -317,7 +332,7 @@ public class TwitchApiClient(
             );
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.twitch.tv/helix/eventsub/subscriptions");
-            request.Headers.Add("Client-Id", settings.ClientId);
+            request.Headers.Add("Client-Id", clientId);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
@@ -361,24 +376,26 @@ public class TwitchApiClient(
     {
         if (string.IsNullOrWhiteSpace(subscriptionId)) return false;
 
-        var settings = configService.GetSettings();
-        if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
+        var clientId = GetClientId();
+        var clientSecret = GetClientSecret();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             return false;
         }
 
+        var envUserToken = GetUserAccessToken();
         var token = !string.IsNullOrWhiteSpace(userAccessToken)
             ? userAccessToken.Trim()
-            : (!string.IsNullOrWhiteSpace(settings.UserAccessToken)
-                ? settings.UserAccessToken.Trim()
-                : await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct));
+            : (!string.IsNullOrWhiteSpace(envUserToken)
+                ? envUserToken.Trim()
+                : await GetValidAccessTokenAsync(clientId, clientSecret, ct));
 
         if (string.IsNullOrEmpty(token)) return false;
 
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Delete, $"https://api.twitch.tv/helix/eventsub/subscriptions?id={Uri.EscapeDataString(subscriptionId)}");
-            request.Headers.Add("Client-Id", settings.ClientId);
+            request.Headers.Add("Client-Id", clientId);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             using var response = await httpClient.SendAsync(request, ct);

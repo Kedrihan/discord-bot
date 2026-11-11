@@ -5,7 +5,8 @@ public class TwitchLiveScheduler(
     TwitchLiveService liveService,
     TwitchEventSubService eventSubService,
     TimeProvider timeProvider,
-    ILogger<TwitchLiveScheduler> logger) : BackgroundService
+    ILogger<TwitchLiveScheduler> logger,
+    IConfiguration? configuration = null) : BackgroundService
 {
     public bool IsWaitingForInitialDelay { get; internal set; }
 
@@ -86,7 +87,8 @@ public class TwitchLiveScheduler(
                     }
                     else
                     {
-                        if (!string.IsNullOrWhiteSpace(currentSettings.UserAccessToken))
+                        var userToken = configuration?["TWITCH_USER_ACCESS_TOKEN"] ?? Environment.GetEnvironmentVariable("TWITCH_USER_ACCESS_TOKEN");
+                        if (!string.IsNullOrWhiteSpace(userToken))
                         {
                             logger.LogInformation("Tentative de reconnexion à EventSub WebSocket...");
                             await eventSubService.StartAsync(stoppingToken);

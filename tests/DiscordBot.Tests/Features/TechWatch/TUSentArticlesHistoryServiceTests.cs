@@ -1,5 +1,5 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using DiscordBot.Services;
+﻿using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -9,22 +9,28 @@ namespace DiscordBot.Tests;
 [TestFixture]
 public class TUSentArticlesHistoryServiceTests
 {
-    private MockFileSystem _fileSystem = null!;
+    private TestBotDbContextFactory _dbContextFactory = null!;
     private FakeTimeProvider _timeProvider = null!;
     private readonly NullLogger<SentArticlesHistoryService> _logger = NullLogger<SentArticlesHistoryService>.Instance;
 
     [SetUp]
     public void SetUp()
     {
-        _fileSystem = new MockFileSystem();
+        _dbContextFactory = new TestBotDbContextFactory();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 4, 10, 0, 0, TimeSpan.Zero));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dbContextFactory.Dispose();
     }
 
     [Test]
     public void IsAlreadySent_ShouldReturnFalse_WhenUrlWasNotMarked()
     {
         // Arrange
-        var service = new SentArticlesHistoryService(_fileSystem, _timeProvider, _logger);
+        var service = new SentArticlesHistoryService(_dbContextFactory, _timeProvider, _logger);
 
         // Act
         var result = service.IsAlreadySent("https://dev.to/article-1");
@@ -37,7 +43,7 @@ public class TUSentArticlesHistoryServiceTests
     public async Task MarkAsSentAsync_ShouldStoreUrlAndNormalize()
     {
         // Arrange
-        var service = new SentArticlesHistoryService(_fileSystem, _timeProvider, _logger);
+        var service = new SentArticlesHistoryService(_dbContextFactory, _timeProvider, _logger);
 
         // Act
         await service.MarkAsSentAsync(["https://DEV.TO/My-Article/"]);
@@ -51,7 +57,7 @@ public class TUSentArticlesHistoryServiceTests
     public async Task MarkAsSentAsync_ShouldPurgeArticlesOlderThan30Days()
     {
         // Arrange
-        var service = new SentArticlesHistoryService(_fileSystem, _timeProvider, _logger);
+        var service = new SentArticlesHistoryService(_dbContextFactory, _timeProvider, _logger);
         await service.MarkAsSentAsync(["https://dev.to/old-article"]);
 
         // Act : On avance le temps de 31 jours

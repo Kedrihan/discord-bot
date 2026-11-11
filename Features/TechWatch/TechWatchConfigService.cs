@@ -1,22 +1,16 @@
-﻿using System.IO.Abstractions;
-using System.Text.Json;
+﻿using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Entities;
 using DiscordBot.DTO;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Services;
 
 public class TechWatchConfigService(
-    IFileSystem fileSystem,
-    IConfiguration configuration,
+    IDbContextFactory<BotDbContext> dbContextFactory,
     ILogger<TechWatchConfigService> logger)
 {
     private readonly object _lock = new();
-    private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "techwatch_settings.json");
     private TechWatchSettingsDto? _settings;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true
-    };
 
     public TechWatchSettingsDto GetSettings()
     {
@@ -27,45 +21,53 @@ public class TechWatchConfigService(
         }
     }
 
+    public async Task<TechWatchSettingsDto> GetSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.TechWatchSettings.FindAsync([1], cancellationToken);
+        if (entity != null)
+        {
+            var dto = MapEntityToDto(entity);
+            lock (_lock)
+            {
+                _settings = dto;
+            }
+            return dto;
+        }
+
+        return new TechWatchSettingsDto();
+    }
+
     public async Task SaveSettingsAsync(TechWatchSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
-        string json;
+        await using var context = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.TechWatchSettings.FindAsync([1], cancellationToken);
+        if (entity == null)
+        {
+            entity = new TechWatchSettingsEntity { Id = 1 };
+            context.TechWatchSettings.Add(entity);
+        }
+
+        MapDtoToEntity(newSettings, entity);
+        await context.SaveChangesAsync(cancellationToken);
+
         lock (_lock)
         {
             _settings = newSettings;
-            json = JsonSerializer.Serialize(_settings, JsonOptions);
         }
 
-        var dir = fileSystem.Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir) && !fileSystem.Directory.Exists(dir))
-        {
-            fileSystem.Directory.CreateDirectory(dir);
-        }
-
-        await fileSystem.File.WriteAllTextAsync(_filePath, json, cancellationToken);
-        logger.LogInformation("Paramètres de la veille technologique enregistrés dans {Path}", _filePath);
+        logger.LogInformation("Paramètres de la veille technologique enregistrés en base de données SQLite.");
     }
 
     private TechWatchSettingsDto LoadSettings()
     {
         try
         {
-            if (fileSystem.File.Exists(_filePath))
+            using var context = dbContextFactory.CreateDbContext();
+            var entity = context.TechWatchSettings.Find(1);
+            if (entity != null)
             {
-                var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<TechWatchSettingsDto>(json);
-                if (loaded != null)
-                {
-                    if (string.IsNullOrWhiteSpace(loaded.GeminiApiKey))
-                    {
-                        var envKey = configuration["GEMINI_API_KEY"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-                        if (!string.IsNullOrWhiteSpace(envKey))
-                        {
-                            loaded.GeminiApiKey = envKey;
-                        }
-                    }
-                    return loaded;
-                }
+                return MapEntityToDto(entity);
             }
         }
         catch (Exception ex)
@@ -73,13 +75,40 @@ public class TechWatchConfigService(
             logger.LogError(ex, "Erreur lors du chargement des paramètres de veille techno. Utilisation des valeurs par défaut.");
         }
 
-        var defaultSettings = new TechWatchSettingsDto();
-        var envApiKey = configuration["GEMINI_API_KEY"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        if (!string.IsNullOrWhiteSpace(envApiKey))
-        {
-            defaultSettings.GeminiApiKey = envApiKey;
-        }
+        return new TechWatchSettingsDto();
+    }
 
-        return defaultSettings;
+    private static TechWatchSettingsDto MapEntityToDto(TechWatchSettingsEntity entity) => new()
+    {
+        IsEnabled = entity.IsEnabled,
+        ScheduleDays = [.. entity.ScheduleDays],
+        ScheduleTime = entity.ScheduleTime,
+        DestinationType = entity.DestinationType,
+        TargetId = entity.TargetId,
+        Topics = [.. entity.Topics],
+        EnableDevTo = entity.EnableDevTo,
+        EnableHackerNews = entity.EnableHackerNews,
+        EnableDotnetBlogRss = entity.EnableDotnetBlogRss,
+        CustomRssFeeds = [.. entity.CustomRssFeeds],
+        GeminiModel = entity.GeminiModel,
+        MaxArticles = entity.MaxArticles,
+        TranslateToFrench = entity.TranslateToFrench
+    };
+
+    private static void MapDtoToEntity(TechWatchSettingsDto dto, TechWatchSettingsEntity entity)
+    {
+        entity.IsEnabled = dto.IsEnabled;
+        entity.ScheduleDays = [.. dto.ScheduleDays];
+        entity.ScheduleTime = dto.ScheduleTime;
+        entity.DestinationType = dto.DestinationType;
+        entity.TargetId = dto.TargetId;
+        entity.Topics = [.. dto.Topics];
+        entity.EnableDevTo = dto.EnableDevTo;
+        entity.EnableHackerNews = dto.EnableHackerNews;
+        entity.EnableDotnetBlogRss = dto.EnableDotnetBlogRss;
+        entity.CustomRssFeeds = [.. dto.CustomRssFeeds];
+        entity.GeminiModel = dto.GeminiModel;
+        entity.MaxArticles = dto.MaxArticles;
+        entity.TranslateToFrench = dto.TranslateToFrench;
     }
 }

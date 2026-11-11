@@ -1,5 +1,5 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using DiscordBot.Services;
+﻿using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -9,21 +9,27 @@ namespace DiscordBot.Tests;
 [TestFixture]
 public class TUTwitchClipHistoryServiceTests
 {
-    private MockFileSystem _fileSystem = null!;
+    private TestBotDbContextFactory _dbContextFactory = null!;
     private FakeTimeProvider _timeProvider = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _fileSystem = new MockFileSystem();
+        _dbContextFactory = new TestBotDbContextFactory();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dbContextFactory.Dispose();
     }
 
     [Test]
     public void IsClipSeen_ShouldReturnFalse_WhenClipNotSeen()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
 
         // Act & Assert
         service.IsClipSeen("unknown_clip").Should().BeFalse();
@@ -35,7 +41,7 @@ public class TUTwitchClipHistoryServiceTests
     public void IsBroadcasterInitialized_ShouldReturnFalse_WhenNotInitialized()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
 
         // Act & Assert
         service.IsBroadcasterInitialized("broadcaster_123").Should().BeFalse();
@@ -47,7 +53,7 @@ public class TUTwitchClipHistoryServiceTests
     public async Task InitializeBroadcasterAsync_ShouldMarkBroadcasterAndClipsAsSeen()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
 
         // Act
         await service.InitializeBroadcasterAsync("12345", ["clip_1", "clip_2"]);
@@ -63,7 +69,7 @@ public class TUTwitchClipHistoryServiceTests
     public async Task MarkClipsAsSeenAsync_ShouldStoreClipAndMarkBroadcaster()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
 
         // Act
         await service.MarkClipsAsSeenAsync(["clip_abc", "clip_xyz"], "streamer_99");
@@ -79,7 +85,7 @@ public class TUTwitchClipHistoryServiceTests
     public async Task MarkClipsAsSeenAsync_ShouldPurgeClipsOlderThan30Days()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         await service.MarkClipsAsSeenAsync(["old_clip"], "broadcaster_1");
 
         // Act: Advance time by 31 days
@@ -92,14 +98,14 @@ public class TUTwitchClipHistoryServiceTests
     }
 
     [Test]
-    public async Task Persistence_ShouldReloadFromDiskAcrossInstances()
+    public async Task Persistence_ShouldReloadAcrossInstances()
     {
         // Arrange
-        var service1 = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service1 = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         await service1.InitializeBroadcasterAsync("broadcaster_42", ["clip_persisted_1", "clip_persisted_2"]);
 
-        // Act: Create new instance pointing to same file system
-        var service2 = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        // Act: Create new instance pointing to same db context factory
+        var service2 = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
 
         // Assert
         service2.IsBroadcasterInitialized("broadcaster_42").Should().BeTrue();
@@ -112,7 +118,7 @@ public class TUTwitchClipHistoryServiceTests
     public async Task PruneOldClips_ShouldCapStoreAtMaxEntries()
     {
         // Arrange
-        var service = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var service = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var largeBatch = Enumerable.Range(1, 5500).Select(i => $"clip_{i}").ToList();
 
         // Act

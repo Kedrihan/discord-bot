@@ -1,10 +1,10 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using System.Net;
+﻿using System.Net;
 using System.Reflection;
 using Discord.WebSocket;
 using DiscordBot.Components.Pages;
 using DiscordBot.DTO;
 using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
@@ -17,14 +17,20 @@ namespace DiscordBot.Tests;
 [TestFixture]
 public class TUTwitchLiveServiceTests
 {
-    private MockFileSystem _fileSystem = null!;
+    private TestBotDbContextFactory _dbContextFactory = null!;
     private FakeTimeProvider _timeProvider = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _fileSystem = new MockFileSystem();
+        _dbContextFactory = new TestBotDbContextFactory();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 4, 18, 0, 0, TimeSpan.Zero));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dbContextFactory.Dispose();
     }
 
     [Test]
@@ -96,7 +102,7 @@ public class TUTwitchLiveServiceTests
     public async Task TwitchStateService_ShouldPersistAndRetrieveActiveStreams()
     {
         // Arrange
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var state = new TwitchActiveStreamStateDto
         {
             TwitchUsername = "zerator",
@@ -124,7 +130,7 @@ public class TUTwitchLiveServiceTests
     }
 
     [Test]
-    public void TwitchConfigService_ShouldFallbackToConfiguration_WhenSettingsEmpty()
+    public void TwitchApiClient_ShouldReadCredentialsFromConfiguration()
     {
         // Arrange
         var inMemoryConfig = new Dictionary<string, string?>
@@ -134,30 +140,25 @@ public class TUTwitchLiveServiceTests
             ["TWITCH_USER_ACCESS_TOKEN"] = "env-user-token"
         };
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
-        var configService = new TwitchConfigService(_fileSystem, configuration, NullLogger<TwitchConfigService>.Instance);
-
-        // Act
-        var settings = configService.GetSettings();
+        var configService = new TwitchConfigService(_dbContextFactory, configuration, NullLogger<TwitchConfigService>.Instance);
+        var httpClient = new HttpClient(new MockHttpMessageHandler("{}"));
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, configuration);
 
         // Assert
-        settings.ClientId.Should().Be("env-client-id");
-        settings.ClientSecret.Should().Be("env-client-secret");
-        settings.UserAccessToken.Should().Be("env-user-token");
+        apiClient.HasCredentials.Should().BeTrue();
+        apiClient.HasUserAccessToken.Should().BeTrue();
     }
 
     [Test]
-    public async Task TwitchConfigService_SaveSettingsAsync_ShouldPersistToDisk()
+    public async Task TwitchConfigService_SaveSettingsAsync_ShouldPersistToDatabase()
     {
         // Arrange
         var configuration = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, configuration, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, configuration, NullLogger<TwitchConfigService>.Instance);
 
         var newSettings = new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "custom-id",
-            ClientSecret = "custom-secret",
-            UserAccessToken = "custom-user-token-123",
             CheckIntervalSeconds = 45,
             Channels =
             [
@@ -174,11 +175,16 @@ public class TUTwitchLiveServiceTests
 
         // Assert
         var saved = configService.GetSettings();
-        saved.ClientId.Should().Be("custom-id");
-        saved.UserAccessToken.Should().Be("custom-user-token-123");
+        saved.IsEnabled.Should().BeTrue();
         saved.CheckIntervalSeconds.Should().Be(45);
         saved.Channels.Should().HaveCount(1);
         saved.Channels[0].TwitchUsername.Should().Be("teststreamer");
+
+        // Verify with fresh service on same db
+        var freshConfigService = new TwitchConfigService(_dbContextFactory, configuration, NullLogger<TwitchConfigService>.Instance);
+        var reloaded = await freshConfigService.GetSettingsAsync();
+        reloaded.CheckIntervalSeconds.Should().Be(45);
+        reloaded.Channels.Should().HaveCount(1);
     }
 
     [Test]
@@ -200,10 +206,10 @@ public class TUTwitchLiveServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = false });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
@@ -224,10 +230,10 @@ public class TUTwitchLiveServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = true, Channels = [] });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
@@ -247,13 +253,16 @@ public class TUTwitchLiveServiceTests
     public async Task CheckStreamsAsync_ShouldCleanOfflineStreams_WhenStreamerNoLongerOnline()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "mock-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "mock-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "mock-client-id",
-            ClientSecret = "mock-client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto
@@ -264,7 +273,7 @@ public class TUTwitchLiveServiceTests
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         // Prédéfinir le streamer comme étant en ligne
         await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
@@ -296,7 +305,7 @@ public class TUTwitchLiveServiceTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         // Act
@@ -387,20 +396,23 @@ public class TUTwitchLiveServiceTests
     public async Task CheckStreamsAsync_ShouldPreventConcurrentExecution()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "id",
+            ["TWITCH_CLIENT_SECRET"] = "secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "id",
-            ClientSecret = "secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "slowchannel", DiscordChannelId = "123" }
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var tcs = new TaskCompletionSource<HttpResponseMessage>();
@@ -411,7 +423,7 @@ public class TUTwitchLiveServiceTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         // Act
@@ -437,13 +449,16 @@ public class TUTwitchLiveServiceTests
     public async Task RefreshLiveStatusAsync_ShouldUpdateCache_And_TriggerOnLiveStatusChanged()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "test-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "test-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "test-client-id",
-            ClientSecret = "test-client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123" },
@@ -451,7 +466,7 @@ public class TUTwitchLiveServiceTests
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var isStreamLive = true;
@@ -496,7 +511,7 @@ public class TUTwitchLiveServiceTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         var eventCount = 0;
@@ -536,13 +551,16 @@ public class TUTwitchLiveServiceTests
     public async Task CheckStreamsAsync_ShouldUpdateLiveStreamsCache_EvenForDisabledChannels()
     {
         // Arrange: 1 channel enabled for Discord, 1 channel disabled for Discord
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "test-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "test-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "test-client-id",
-            ClientSecret = "test-client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "activeStreamer", DiscordChannelId = "111", IsEnabled = true },
@@ -550,7 +568,7 @@ public class TUTwitchLiveServiceTests
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -598,7 +616,7 @@ public class TUTwitchLiveServiceTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         var eventFired = false;
@@ -619,17 +637,20 @@ public class TUTwitchLiveServiceTests
     public async Task RefreshLiveStatusAsync_ShouldIsolateFailingSubscribers_AndNotifyRemaining()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "test-id",
+            ["TWITCH_CLIENT_SECRET"] = "test-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "test-id",
-            ClientSecret = "test-secret",
             Channels = [new TrackedTwitchChannelDto { TwitchUsername = "streamer", DiscordChannelId = "123" }]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -649,7 +670,7 @@ public class TUTwitchLiveServiceTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         var firstFailed = false;

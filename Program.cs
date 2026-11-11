@@ -5,12 +5,15 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Components;
+using DiscordBot.Core.Database;
+using DiscordBot.Core.Database.Services;
 using DiscordBot.Services;
 using dotenv.net;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using TwitchLib.EventSub.Websockets.Extensions;
 
 // Chargement automatique du fichier .env s'il existe
@@ -121,6 +124,14 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<System.IO.Abstractions.IFileSystem, System.IO.Abstractions.FileSystem>();
 
+// Base de données relationnelle locale SQLite (EF Core 10)
+var connectionString = builder.Configuration.GetConnectionString("BotDb") ?? "Data Source=data/bot.db";
+builder.Services.AddDbContextFactory<BotDbContext>(options =>
+{
+    options.UseSqlite(connectionString);
+});
+builder.Services.AddSingleton<DatabaseMigrationService>();
+
 // Service d'état global du bot
 builder.Services.AddSingleton<BotSettingsService>();
 
@@ -177,6 +188,13 @@ builder.Services.AddSingleton(provider => new InteractionService(
 builder.Services.AddHostedService<DiscordBotService>();
 
 var app = builder.Build();
+
+// Migration et initialisation de la base de données SQLite
+using (var scope = app.Services.CreateScope())
+{
+    var migrationService = scope.ServiceProvider.GetRequiredService<DatabaseMigrationService>();
+    await migrationService.InitializeAndMigrateAsync();
+}
 
 app.UseForwardedHeaders();
 

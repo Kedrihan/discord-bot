@@ -1,8 +1,8 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using System.Net;
+﻿using System.Net;
 using Discord.WebSocket;
 using DiscordBot.DTO;
 using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,14 +13,20 @@ namespace DiscordBot.Tests;
 [TestFixture]
 public class TUTwitchClipServiceTests
 {
-    private MockFileSystem _fileSystem = null!;
+    private TestBotDbContextFactory _dbContextFactory = null!;
     private FakeTimeProvider _timeProvider = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _fileSystem = new MockFileSystem();
+        _dbContextFactory = new TestBotDbContextFactory();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dbContextFactory.Dispose();
     }
 
     [Test]
@@ -266,13 +272,13 @@ public class TUTwitchClipServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = false, IsClipsEnabled = true });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
@@ -289,13 +295,13 @@ public class TUTwitchClipServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = true, IsClipsEnabled = false });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
@@ -312,7 +318,7 @@ public class TUTwitchClipServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
@@ -328,10 +334,10 @@ public class TUTwitchClipServiceTests
             ]
         });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
@@ -347,14 +353,17 @@ public class TUTwitchClipServiceTests
     public async Task CheckNewClipsAsync_ColdStart_ShouldInitializeBroadcasterWithoutSendingMessages()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemory = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "test_client_id",
+            ["TWITCH_CLIENT_SECRET"] = "test_client_secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemory).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             IsClipsEnabled = true,
-            ClientId = "test_client_id",
-            ClientSecret = "test_client_secret",
             Channels =
             [
                 new TrackedTwitchChannelDto
@@ -367,7 +376,7 @@ public class TUTwitchClipServiceTests
             ]
         });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -448,7 +457,7 @@ public class TUTwitchClipServiceTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
         // Broadcaster should not be initialized before check
@@ -469,12 +478,16 @@ public class TUTwitchClipServiceTests
     public async Task TwitchApiClient_GetClipsAsync_ShouldQueryHelixClips_AndDeserializeProperly()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemory = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "helix_client_id",
+            ["TWITCH_CLIENT_SECRET"] = "helix_secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemory).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            ClientId = "helix_client_id",
-            ClientSecret = "helix_secret"
+            IsEnabled = true
         });
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -520,7 +533,7 @@ public class TUTwitchClipServiceTests
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act
         var clips = await apiClient.GetClipsAsync("555", startedAt: new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero), first: 10);
@@ -545,13 +558,13 @@ public class TUTwitchClipServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto { Channels = [] });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
@@ -568,7 +581,7 @@ public class TUTwitchClipServiceTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
@@ -576,10 +589,10 @@ public class TUTwitchClipServiceTests
             ClipCheckIntervalSeconds = 60
         });
 
-        var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
-        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(httpHandler), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var clipService = new TwitchClipService(discordClient, configService, historyService, apiClient, _timeProvider, NullLogger<TwitchClipService>.Instance);
 
         var scheduler = new TwitchClipScheduler(configService, clipService, _timeProvider, NullLogger<TwitchClipScheduler>.Instance);

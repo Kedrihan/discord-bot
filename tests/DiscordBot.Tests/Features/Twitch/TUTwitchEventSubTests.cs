@@ -1,9 +1,9 @@
-﻿using System.IO.Abstractions.TestingHelpers;
-using System.Net;
+﻿using System.Net;
 using System.Text.Json;
 using Discord.WebSocket;
 using DiscordBot.DTO;
 using DiscordBot.Services;
+using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,27 +15,36 @@ namespace DiscordBot.Tests;
 [TestFixture]
 public class TUTwitchEventSubTests
 {
-    private MockFileSystem _fileSystem = null!;
+    private TestBotDbContextFactory _dbContextFactory = null!;
     private FakeTimeProvider _timeProvider = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _fileSystem = new MockFileSystem();
+        _dbContextFactory = new TestBotDbContextFactory();
         _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 4, 18, 0, 0, TimeSpan.Zero));
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _dbContextFactory.Dispose();
     }
 
     [Test]
     public async Task TwitchApiClient_GetUsersByLoginAsync_ShouldFetchAndReturnUsers_AndCacheUserIds()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "test-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "test-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "test-client-id",
-            ClientSecret = "test-client-secret"
+            IsEnabled = true
         });
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -71,7 +80,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act
         var users = await apiClient.GetUsersByLoginAsync(["zerator"]);
@@ -90,13 +99,16 @@ public class TUTwitchEventSubTests
     public async Task TwitchApiClient_CreateEventSubSubscriptionAsync_ShouldPostCorrectPayload_AndReturnSubId()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "my-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "my-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "my-client-id",
-            ClientSecret = "my-client-secret"
+            IsEnabled = true
         });
 
         HttpRequestMessage? recordedRequest = null;
@@ -142,7 +154,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act
         var result = await apiClient.CreateEventSubSubscriptionAsync("session-xyz", "stream.online", "broadcaster-999");
@@ -168,14 +180,17 @@ public class TUTwitchEventSubTests
     public async Task TwitchApiClient_CreateEventSubSubscriptionAsync_ShouldUseUserAccessToken_WhenProvided()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "my-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "my-client-secret",
+            ["TWITCH_USER_ACCESS_TOKEN"] = "settings-user-token"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "my-client-id",
-            ClientSecret = "my-client-secret",
-            UserAccessToken = "settings-user-token"
+            IsEnabled = true
         });
 
         HttpRequestMessage? recordedRequest = null;
@@ -209,7 +224,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act 1: without explicit token param -> uses settings.UserAccessToken
         var result1 = await apiClient.CreateEventSubSubscriptionAsync("session-1", "stream.online", "broadcaster-1");
@@ -235,13 +250,16 @@ public class TUTwitchEventSubTests
     public async Task TwitchApiClient_CreateEventSubSubscriptionAsync_ShouldHandleConflict_Gracefully()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "my-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "my-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "my-client-id",
-            ClientSecret = "my-client-secret"
+            IsEnabled = true
         });
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -261,7 +279,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act
         var result = await apiClient.CreateEventSubSubscriptionAsync("session-xyz", "stream.online", "broadcaster-999");
@@ -275,13 +293,16 @@ public class TUTwitchEventSubTests
     public async Task TwitchApiClient_DeleteEventSubSubscriptionAsync_ShouldSendDeleteRequest_AndReturnTrue()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "my-client-id",
+            ["TWITCH_CLIENT_SECRET"] = "my-client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "my-client-id",
-            ClientSecret = "my-client-secret"
+            IsEnabled = true
         });
 
         HttpRequestMessage? recordedRequest = null;
@@ -300,7 +321,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
 
         // Act
         var success = await apiClient.DeleteEventSubSubscriptionAsync("sub-uuid-12345");
@@ -317,8 +338,8 @@ public class TUTwitchEventSubTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
@@ -348,8 +369,8 @@ public class TUTwitchEventSubTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
@@ -369,25 +390,28 @@ public class TUTwitchEventSubTests
     public async Task TwitchEventSubService_StartAsync_ShouldReturnFalse_WhenDisabled()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "id",
+            ["TWITCH_CLIENT_SECRET"] = "secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = false,
-            ClientId = "id",
-            ClientSecret = "secret"
+            IsEnabled = false
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         var wsClient = new EventSubWebsocketClient(NullLoggerFactory.Instance);
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
         // Act
         var result = await eventSubService.StartAsync();
@@ -401,13 +425,16 @@ public class TUTwitchEventSubTests
     public async Task TwitchEventSubService_SubscribeAllActiveChannelsAsync_ShouldCreateSubscriptions()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "my-client",
+            ["TWITCH_CLIENT_SECRET"] = "my-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "my-client",
-            ClientSecret = "my-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto
@@ -468,8 +495,8 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
@@ -480,7 +507,7 @@ public class TUTwitchEventSubTests
         backingField?.SetValue(wsClient, "mock-session-id");
 
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
         // Act
         var count = await eventSubService.SubscribeAllActiveChannelsAsync();
@@ -496,28 +523,32 @@ public class TUTwitchEventSubTests
     public async Task TwitchLiveScheduler_ShouldStartEventSubAndHandleShutdownCleanly()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret",
+            ["TWITCH_USER_ACCESS_TOKEN"] = "token"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
             Channels = []
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         var wsClient = new EventSubWebsocketClient(NullLoggerFactory.Instance);
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
-        var scheduler = new TwitchLiveScheduler(configService, liveService, eventSubService, _timeProvider, NullLogger<TwitchLiveScheduler>.Instance);
+        var scheduler = new TwitchLiveScheduler(configService, liveService, eventSubService, _timeProvider, NullLogger<TwitchLiveScheduler>.Instance, config);
 
         using var cts = new CancellationTokenSource();
 
@@ -539,26 +570,29 @@ public class TUTwitchEventSubTests
     public async Task TwitchEventSubService_StartAsync_ShouldReturnFalse_WhenUserAccessTokenIsEmpty()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret",
+            ["TWITCH_USER_ACCESS_TOKEN"] = string.Empty
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
-            IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
-            UserAccessToken = string.Empty
+            IsEnabled = true
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
         var wsClient = new EventSubWebsocketClient(NullLoggerFactory.Instance);
 
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
         // Act
         var result = await eventSubService.StartAsync();
@@ -573,14 +607,17 @@ public class TUTwitchEventSubTests
     public async Task TwitchLiveScheduler_ShouldExecutePolling_WhenEventSubIsDisconnected()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret",
+            ["TWITCH_USER_ACCESS_TOKEN"] = string.Empty
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
-            UserAccessToken = string.Empty,
             CheckIntervalSeconds = 15,
             Channels =
             [
@@ -588,7 +625,7 @@ public class TUTwitchEventSubTests
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var streamCheckCount = 0;
         var requestsReceived = new List<string>();
@@ -622,14 +659,14 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
         var wsClient = new EventSubWebsocketClient(NullLoggerFactory.Instance);
 
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
-        var scheduler = new TwitchLiveScheduler(configService, liveService, eventSubService, _timeProvider, NullLogger<TwitchLiveScheduler>.Instance);
+        var scheduler = new TwitchLiveScheduler(configService, liveService, eventSubService, _timeProvider, NullLogger<TwitchLiveScheduler>.Instance, config);
 
         using var cts = new CancellationTokenSource();
 
@@ -673,8 +710,8 @@ public class TUTwitchEventSubTests
     {
         // Arrange
         var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
@@ -699,20 +736,23 @@ public class TUTwitchEventSubTests
     public async Task TwitchEventSubService_SubscribeAllActiveChannelsAsync_WithDuplicateHelixUsers_ShouldDeduplicateGracefully()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
         var httpHandler = new MockHttpMessageHandler(request =>
@@ -753,7 +793,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
         var wsClient = new EventSubWebsocketClient(NullLoggerFactory.Instance);
 
@@ -761,7 +801,7 @@ public class TUTwitchEventSubTests
         backingField?.SetValue(wsClient, "mock-session-123");
 
         await using var eventSubService = new TwitchEventSubService(
-            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
+            wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance, config);
 
         // Act
         var result = await eventSubService.SubscribeAllActiveChannelsAsync();
@@ -774,20 +814,23 @@ public class TUTwitchEventSubTests
     public async Task TwitchLiveService_CheckStreamsAsync_ShouldReconcileEventSubFallbackStreamId_WithoutDeletingMessage()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var now = _timeProvider.GetUtcNow();
         await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
@@ -838,7 +881,7 @@ public class TUTwitchEventSubTests
         });
 
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         // Act
@@ -856,20 +899,23 @@ public class TUTwitchEventSubTests
     public async Task TwitchLiveService_HandleStreamOnlineAsync_ShouldNotDuplicate_WhenAlreadyNotifiedByPolling()
     {
         // Arrange
-        var config = new ConfigurationBuilder().Build();
-        var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
+        var inMemoryConfig = new Dictionary<string, string?>
+        {
+            ["TWITCH_CLIENT_ID"] = "client-id",
+            ["TWITCH_CLIENT_SECRET"] = "client-secret"
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(inMemoryConfig).Build();
+        var configService = new TwitchConfigService(_dbContextFactory, config, NullLogger<TwitchConfigService>.Instance);
         await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
-            ClientId = "client-id",
-            ClientSecret = "client-secret",
             Channels =
             [
                 new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
-        var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
+        var stateService = new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance);
         var now = _timeProvider.GetUtcNow();
         await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
@@ -883,7 +929,7 @@ public class TUTwitchEventSubTests
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
         var httpHandler = new MockHttpMessageHandler("{}");
         var httpClient = new HttpClient(httpHandler);
-        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var apiClient = new TwitchApiClient(httpClient, configService, _timeProvider, NullLogger<TwitchApiClient>.Instance, config);
         var liveService = new TwitchLiveService(discordClient, configService, stateService, apiClient, NullLogger<TwitchLiveService>.Instance);
 
         // Act: EventSub online arrives for a stream that is already notified by polling
