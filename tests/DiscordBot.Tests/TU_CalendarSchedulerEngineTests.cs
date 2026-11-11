@@ -1,5 +1,5 @@
-using System.IO.Abstractions.TestingHelpers;
-using DiscordBot.Models;
+﻿using System.IO.Abstractions.TestingHelpers;
+using DiscordBot.DTO;
 using DiscordBot.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class CalendarSchedulerEngineTests
+public class TU_CalendarSchedulerEngineTests
 {
     private FakeTimeProvider _timeProvider = null!;
     private readonly NullLogger<CalendarSchedulerEngine> _logger = NullLogger<CalendarSchedulerEngine>.Instance;
@@ -17,8 +17,9 @@ public class CalendarSchedulerEngineTests
     [SetUp]
     public void SetUp()
     {
-        // 2026-11-09 is a Monday
-        _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 9, 7, 30, 0, TimeSpan.Zero));
+        // 2026-11-09 is a Monday. Paris is in CET (UTC+1) in November.
+        // 06:30 UTC = 07:30 Paris time.
+        _timeProvider = new FakeTimeProvider(new DateTimeOffset(2026, 11, 9, 6, 30, 0, TimeSpan.Zero));
     }
 
     [Test]
@@ -27,7 +28,7 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var job = new TestCalendarJob(
             "TestJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -43,7 +44,7 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var job = new TestCalendarJob(
             "DisabledJob",
-            new CalendarSchedule(false, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(false, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -59,7 +60,7 @@ public class CalendarSchedulerEngineTests
         // Arrange (scheduled on Tuesday, current day is Monday)
         var job = new TestCalendarJob(
             "TuesdayJob",
-            new CalendarSchedule(true, [DayOfWeek.Tuesday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Tuesday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -75,7 +76,7 @@ public class CalendarSchedulerEngineTests
         // Arrange (scheduled at 08:30, current time is 07:30)
         var job = new TestCalendarJob(
             "LaterHourJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(8, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(8, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -91,7 +92,7 @@ public class CalendarSchedulerEngineTests
         // Arrange (scheduled at 07:45, current time is 07:30)
         var job = new TestCalendarJob(
             "LaterMinuteJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 45)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 45)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -107,7 +108,7 @@ public class CalendarSchedulerEngineTests
         // Arrange (empty days list)
         var job = new TestCalendarJob(
             "EmptyDaysJob",
-            new CalendarSchedule(true, [], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -123,7 +124,7 @@ public class CalendarSchedulerEngineTests
         // Arrange (null days list)
         var job = new TestCalendarJob(
             "NullDaysJob",
-            new CalendarSchedule(true, null, new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, null, new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act
@@ -139,7 +140,7 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var job = new TestCalendarJob(
             "DeduplicatedJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act: First call at 07:30:00
@@ -163,7 +164,7 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var job = new TestCalendarJob(
             "RecurringJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act: Trigger on Monday 2026-11-09 07:30
@@ -184,10 +185,10 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var job1 = new TestCalendarJob(
             "Job1",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var job2 = new TestCalendarJob(
             "Job2",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job1, job2], _timeProvider, _logger);
 
         // Act
@@ -204,12 +205,12 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var faultyJob = new TestCalendarJob(
             "FaultyJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
             () => throw new InvalidOperationException("Simulation de crash d'exécution"));
 
         var healthyJob = new TestCalendarJob(
             "HealthyJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
 
         var engine = new CalendarSchedulerEngine([faultyJob, healthyJob], _timeProvider, _logger);
 
@@ -228,14 +229,14 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var faultyJob = new TestCalendarJob(
             "ScheduleCrashJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)))
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)))
         {
             ScheduleFactory = () => throw new FormatException("Erreur de format de configuration")
         };
 
         var healthyJob = new TestCalendarJob(
             "HealthyJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
 
         var engine = new CalendarSchedulerEngine([faultyJob, healthyJob], _timeProvider, _logger);
 
@@ -253,12 +254,12 @@ public class CalendarSchedulerEngineTests
         // Arrange
         var failingJob = new TestCalendarJob(
             "FailingJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
-            () => Task.FromResult(CalendarJobExecutionResult.Failed("Erreur réseau temporaire")));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
+            () => Task.FromResult(CalendarJobExecutionResultDto.Failed("Erreur réseau temporaire")));
 
         var healthyJob = new TestCalendarJob(
             "HealthyJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
 
         var engine = new CalendarSchedulerEngine([failingJob, healthyJob], _timeProvider, _logger);
 
@@ -311,10 +312,10 @@ public class CalendarSchedulerEngineTests
     public async Task CheckAndTriggerJobsAsync_ShouldPreventConcurrentExecution_WhenSameJobIsAlreadyRunning()
     {
         // Arrange: A job that blocks until released
-        var tcs = new TaskCompletionSource<CalendarJobExecutionResult>();
+        var tcs = new TaskCompletionSource<CalendarJobExecutionResultDto>();
         var slowJob = new TestCalendarJob(
             "SlowJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
             () => tcs.Task);
 
         var engine = new CalendarSchedulerEngine([slowJob], _timeProvider, _logger);
@@ -330,7 +331,7 @@ public class CalendarSchedulerEngineTests
         slowJob.ExecutionCount.Should().Be(1);
 
         // Release the first execution
-        tcs.SetResult(CalendarJobExecutionResult.Succeeded());
+        tcs.SetResult(CalendarJobExecutionResultDto.Succeeded());
         await firstExecutionTask;
         slowJob.ExecutionCount.Should().Be(1);
     }
@@ -341,7 +342,7 @@ public class CalendarSchedulerEngineTests
         // Arrange: A job that awaits until canceled by token
         var timedOutJob = new TestCalendarJob(
             "TimedOutJob",
-            new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
+            new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)),
             null,
             async token =>
             {
@@ -349,7 +350,7 @@ public class CalendarSchedulerEngineTests
                 var tcs = new TaskCompletionSource();
                 using var reg = token.Register(() => tcs.TrySetResult());
                 await tcs.Task;
-                return CalendarJobExecutionResult.Failed("Timeout");
+                return CalendarJobExecutionResultDto.Failed("Timeout");
             });
 
         var engine = new CalendarSchedulerEngine([timedOutJob], _timeProvider, _logger);
@@ -371,7 +372,7 @@ public class CalendarSchedulerEngineTests
     public void Dispose_ShouldCleanUpSemaphoresWithoutError()
     {
         // Arrange
-        var job = new TestCalendarJob("DisposedJob", new CalendarSchedule(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
+        var job = new TestCalendarJob("DisposedJob", new CalendarScheduleDto(true, [DayOfWeek.Monday], new TimeOnly(7, 30)));
         var engine = new CalendarSchedulerEngine([job], _timeProvider, _logger);
 
         // Act & Assert
@@ -381,17 +382,17 @@ public class CalendarSchedulerEngineTests
 
     private class TestCalendarJob(
         string name,
-        CalendarSchedule schedule,
-        Func<Task<CalendarJobExecutionResult>>? executeCallback = null,
-        Func<CancellationToken, Task<CalendarJobExecutionResult>>? executeWithTokenCallback = null) : ICalendarJob
+        CalendarScheduleDto schedule,
+        Func<Task<CalendarJobExecutionResultDto>>? executeCallback = null,
+        Func<CancellationToken, Task<CalendarJobExecutionResultDto>>? executeWithTokenCallback = null) : ICalendarJob
     {
         public string JobName => name;
         public int ExecutionCount { get; private set; }
-        public Func<CalendarSchedule>? ScheduleFactory { get; set; }
+        public Func<CalendarScheduleDto>? ScheduleFactory { get; set; }
 
-        public CalendarSchedule GetSchedule() => ScheduleFactory != null ? ScheduleFactory() : schedule;
+        public CalendarScheduleDto GetSchedule() => ScheduleFactory != null ? ScheduleFactory() : schedule;
 
-        public async Task<CalendarJobExecutionResult> ExecuteAsync(CancellationToken cancellationToken = default)
+        public async Task<CalendarJobExecutionResultDto> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             ExecutionCount++;
             if (executeWithTokenCallback != null)
@@ -404,7 +405,7 @@ public class CalendarSchedulerEngineTests
                 return await executeCallback();
             }
 
-            return CalendarJobExecutionResult.Succeeded();
+            return CalendarJobExecutionResultDto.Succeeded();
         }
     }
 }

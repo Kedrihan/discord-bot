@@ -1,11 +1,10 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -21,7 +20,7 @@ public class TwitchApiClient(
     private readonly ConcurrentDictionary<string, (string Url, DateTimeOffset CachedAt)> _avatarCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _userIdCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<IReadOnlyList<TwitchStreamInfo>> GetStreamsAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TwitchStreamInfoDto>> GetStreamsAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
     {
         var logins = userLogins
             .Where(u => !string.IsNullOrWhiteSpace(u))
@@ -40,7 +39,7 @@ public class TwitchApiClient(
         var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
         if (string.IsNullOrEmpty(token)) return [];
 
-        var results = new List<TwitchStreamInfo>();
+        var results = new List<TwitchStreamInfoDto>();
 
         // Helix limite à 100 requêtes de user_login par appel
         foreach (var chunk in logins.Chunk(100))
@@ -72,7 +71,7 @@ public class TwitchApiClient(
 
                 foreach (var s in streamResponse.Data)
                 {
-                    results.Add(new TwitchStreamInfo
+                    results.Add(new TwitchStreamInfoDto
                     {
                         StreamId = s.Id,
                         UserId = s.UserId,
@@ -95,7 +94,7 @@ public class TwitchApiClient(
         return results;
     }
 
-    public async Task<IReadOnlyList<TwitchClipInfo>> GetClipsAsync(
+    public async Task<IReadOnlyList<TwitchClipInfoDto>> GetClipsAsync(
         string broadcasterUserId,
         DateTimeOffset? startedAt = null,
         int first = 20,
@@ -144,7 +143,7 @@ public class TwitchApiClient(
             var clipsResponse = JsonSerializer.Deserialize<HelixClipsResponse>(content);
             if (clipsResponse?.Data == null) return [];
 
-            return clipsResponse.Data.Select(c => new TwitchClipInfo(
+            return clipsResponse.Data.Select(c => new TwitchClipInfoDto(
                 Id: c.Id ?? string.Empty,
                 Url: c.Url ?? string.Empty,
                 EmbedUrl: c.EmbedUrl ?? string.Empty,
@@ -168,7 +167,7 @@ public class TwitchApiClient(
         }
     }
 
-    public async Task<IReadOnlyList<TwitchUserInfo>> GetUsersByLoginAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
+    public async Task<IReadOnlyList<TwitchUserInfoDto>> GetUsersByLoginAsync(IEnumerable<string> userLogins, CancellationToken ct = default)
     {
         var logins = userLogins
             .Where(u => !string.IsNullOrWhiteSpace(u))
@@ -187,7 +186,7 @@ public class TwitchApiClient(
         var token = await GetValidAccessTokenAsync(settings.ClientId, settings.ClientSecret, ct);
         if (string.IsNullOrEmpty(token)) return [];
 
-        var results = new List<TwitchUserInfo>();
+        var results = new List<TwitchUserInfoDto>();
         var now = timeProvider.GetUtcNow();
 
         foreach (var chunk in logins.Chunk(100))
@@ -219,7 +218,7 @@ public class TwitchApiClient(
 
                 foreach (var u in usersResponse.Data)
                 {
-                    var userInfo = new TwitchUserInfo(u.Id, u.Login, u.DisplayName, u.ProfileImageUrl);
+                    var userInfo = new TwitchUserInfoDto(u.Id, u.Login, u.DisplayName, u.ProfileImageUrl);
                     results.Add(userInfo);
 
                     _userIdCache[u.Login] = u.Id;
@@ -271,7 +270,7 @@ public class TwitchApiClient(
         return user?.ProfileImageUrl;
     }
 
-    public async Task<TwitchSubscriptionResult> CreateEventSubSubscriptionAsync(
+    public async Task<TwitchSubscriptionResultDto> CreateEventSubSubscriptionAsync(
         string sessionId,
         string eventType,
         string broadcasterUserId,
@@ -280,21 +279,21 @@ public class TwitchApiClient(
     {
         if (string.IsNullOrWhiteSpace(sessionId))
         {
-            return new TwitchSubscriptionResult(false, null, "L'identifiant de session WebSocket est requis.");
+            return new TwitchSubscriptionResultDto(false, null, "L'identifiant de session WebSocket est requis.");
         }
         if (string.IsNullOrWhiteSpace(eventType))
         {
-            return new TwitchSubscriptionResult(false, null, "Le type d'événement EventSub est requis.");
+            return new TwitchSubscriptionResultDto(false, null, "Le type d'événement EventSub est requis.");
         }
         if (string.IsNullOrWhiteSpace(broadcasterUserId))
         {
-            return new TwitchSubscriptionResult(false, null, "L'identifiant Twitch du diffuseur est requis.");
+            return new TwitchSubscriptionResultDto(false, null, "L'identifiant Twitch du diffuseur est requis.");
         }
 
         var settings = configService.GetSettings();
         if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
         {
-            return new TwitchSubscriptionResult(false, null, "Identifiants Twitch non configurés.");
+            return new TwitchSubscriptionResultDto(false, null, "Identifiants Twitch non configurés.");
         }
 
         var token = !string.IsNullOrWhiteSpace(userAccessToken)
@@ -305,7 +304,7 @@ public class TwitchApiClient(
 
         if (string.IsNullOrEmpty(token))
         {
-            return new TwitchSubscriptionResult(false, null, "Impossible d'obtenir un token d'accès Twitch.");
+            return new TwitchSubscriptionResultDto(false, null, "Impossible d'obtenir un token d'accès Twitch.");
         }
 
         try
@@ -329,13 +328,13 @@ public class TwitchApiClient(
                 var subResponse = JsonSerializer.Deserialize<HelixSubscriptionsResponse>(content);
                 var subId = subResponse?.Data?.FirstOrDefault()?.Id;
                 logger.LogInformation("Souscription EventSub '{EventType}' créée avec succès pour broadcaster {UserId} (Sub ID: {SubId}).", eventType, broadcasterUserId, subId);
-                return new TwitchSubscriptionResult(true, subId, null);
+                return new TwitchSubscriptionResultDto(true, subId, null);
             }
 
             if (response.StatusCode == HttpStatusCode.Conflict)
             {
                 logger.LogInformation("Souscription EventSub '{EventType}' existe déjà pour broadcaster {UserId}.", eventType, broadcasterUserId);
-                return new TwitchSubscriptionResult(true, null, "Souscription déjà active.");
+                return new TwitchSubscriptionResultDto(true, null, "Souscription déjà active.");
             }
 
             if (response.StatusCode == HttpStatusCode.Unauthorized)
@@ -346,12 +345,12 @@ public class TwitchApiClient(
 
             var errorBody = await response.Content.ReadAsStringAsync(ct);
             logger.LogError("Échec de création de la souscription EventSub '{EventType}' ({StatusCode}) : {ErrorBody}", eventType, response.StatusCode, errorBody);
-            return new TwitchSubscriptionResult(false, null, $"Erreur HTTP {response.StatusCode} : {errorBody}");
+            return new TwitchSubscriptionResultDto(false, null, $"Erreur HTTP {response.StatusCode} : {errorBody}");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Exception lors de la création de la souscription EventSub '{EventType}' pour broadcaster {UserId}.", eventType, broadcasterUserId);
-            return new TwitchSubscriptionResult(false, null, ex.Message);
+            return new TwitchSubscriptionResultDto(false, null, ex.Message);
         }
     }
 
@@ -454,7 +453,7 @@ public class TwitchApiClient(
             }
 
             var responseJson = await response.Content.ReadAsStringAsync(ct);
-            var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponse>(responseJson);
+            var tokenResponse = JsonSerializer.Deserialize<TwitchTokenResponseDto>(responseJson);
             if (tokenResponse == null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
             {
                 logger.LogError("Réponse de token Twitch invalide ou vide.");

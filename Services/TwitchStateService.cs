@@ -1,7 +1,6 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -12,14 +11,14 @@ public class TwitchStateService(
     private readonly object _lock = new();
     private readonly SemaphoreSlim _fileLock = new(1, 1);
     private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "twitch_live_state.json");
-    private List<TwitchActiveStreamState>? _activeStreams;
+    private List<TwitchActiveStreamStateDto>? _activeStreams;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
 
-    public IReadOnlyList<TwitchActiveStreamState> GetActiveStreams()
+    public IReadOnlyList<TwitchActiveStreamStateDto> GetActiveStreams()
     {
         lock (_lock)
         {
@@ -28,7 +27,7 @@ public class TwitchStateService(
         }
     }
 
-    public TwitchActiveStreamState? GetActiveStream(string username)
+    public TwitchActiveStreamStateDto? GetActiveStream(string username)
     {
         if (string.IsNullOrWhiteSpace(username)) return null;
 
@@ -39,7 +38,7 @@ public class TwitchStateService(
         }
     }
 
-    public async Task SetActiveStreamAsync(TwitchActiveStreamState state, CancellationToken ct = default)
+    public async Task SetActiveStreamAsync(TwitchActiveStreamStateDto state, CancellationToken ct = default)
     {
         string json;
         lock (_lock)
@@ -89,7 +88,7 @@ public class TwitchStateService(
             if (fileSystem.File.Exists(_filePath))
             {
                 var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<List<TwitchActiveStreamState>>(json);
+                var loaded = JsonSerializer.Deserialize<List<TwitchActiveStreamStateDto>>(json);
                 if (loaded != null)
                 {
                     _activeStreams = loaded;

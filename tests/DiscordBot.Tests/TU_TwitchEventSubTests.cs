@@ -1,8 +1,8 @@
-using System.IO.Abstractions.TestingHelpers;
+﻿using System.IO.Abstractions.TestingHelpers;
 using System.Net;
 using System.Text.Json;
 using Discord.WebSocket;
-using DiscordBot.Models;
+using DiscordBot.DTO;
 using DiscordBot.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -13,7 +13,7 @@ using TwitchLib.EventSub.Websockets;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TwitchEventSubTests
+public class TU_TwitchEventSubTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;
@@ -31,7 +31,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "test-client-id",
@@ -92,7 +92,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "my-client-id",
@@ -170,7 +170,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "my-client-id",
@@ -237,7 +237,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "my-client-id",
@@ -277,7 +277,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "my-client-id",
@@ -321,7 +321,7 @@ public class TwitchEventSubTests
         var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
 
-        await stateService.SetActiveStreamAsync(new TwitchActiveStreamState
+        await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
             TwitchUsername = "streamer1",
             StreamId = "stream-999",
@@ -361,7 +361,7 @@ public class TwitchEventSubTests
             wsClient, configService, apiClient, liveService, NullLogger<TwitchEventSubService>.Instance);
 
         // Act & Assert
-        eventSubService.Status.Should().Be(TwitchEventSubStatus.Disconnected);
+        eventSubService.Status.Should().Be(TwitchEventSubStatusDto.Disconnected);
         eventSubService.IsConnected.Should().BeFalse();
     }
 
@@ -371,7 +371,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = false,
             ClientId = "id",
@@ -403,14 +403,14 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "my-client",
             ClientSecret = "my-secret",
             Channels =
             [
-                new TrackedTwitchChannel
+                new TrackedTwitchChannelDto
                 {
                     TwitchUsername = "streamer1",
                     DiscordChannelId = "111222333",
@@ -498,7 +498,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
@@ -541,7 +541,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
@@ -565,7 +565,7 @@ public class TwitchEventSubTests
 
         // Assert
         result.Should().BeFalse();
-        eventSubService.Status.Should().Be(TwitchEventSubStatus.Disconnected);
+        eventSubService.Status.Should().Be(TwitchEventSubStatusDto.Disconnected);
         eventSubService.IsConnected.Should().BeFalse();
     }
 
@@ -575,7 +575,7 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
@@ -584,7 +584,7 @@ public class TwitchEventSubTests
             CheckIntervalSeconds = 15,
             Channels =
             [
-                new TrackedTwitchChannel { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
+                new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
@@ -701,14 +701,14 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
             ClientSecret = "client-secret",
             Channels =
             [
-                new TrackedTwitchChannel { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
+                new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
@@ -776,20 +776,20 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
             ClientSecret = "client-secret",
             Channels =
             [
-                new TrackedTwitchChannel { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
+                new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
         var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
         var now = _timeProvider.GetUtcNow();
-        await stateService.SetActiveStreamAsync(new TwitchActiveStreamState
+        await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
             TwitchUsername = "zerator",
             StreamId = $"es_12345_{now.ToUnixTimeSeconds()}",
@@ -858,20 +858,20 @@ public class TwitchEventSubTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             ClientId = "client-id",
             ClientSecret = "client-secret",
             Channels =
             [
-                new TrackedTwitchChannel { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
+                new TrackedTwitchChannelDto { TwitchUsername = "zerator", DiscordChannelId = "123456789", IsEnabled = true }
             ]
         });
 
         var stateService = new TwitchStateService(_fileSystem, NullLogger<TwitchStateService>.Instance);
         var now = _timeProvider.GetUtcNow();
-        await stateService.SetActiveStreamAsync(new TwitchActiveStreamState
+        await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
         {
             TwitchUsername = "zerator",
             StreamId = "helix-stream-111",

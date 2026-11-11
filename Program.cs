@@ -7,11 +7,11 @@ using Discord.WebSocket;
 using DiscordBot.Components;
 using DiscordBot.Services;
 using dotenv.net;
-using TwitchLib.EventSub.Websockets.Extensions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.HttpOverrides;
+using TwitchLib.EventSub.Websockets.Extensions;
 
 // Chargement automatique du fichier .env s'il existe
 DotEnv.Load(new DotEnvOptions(ignoreExceptions: true));

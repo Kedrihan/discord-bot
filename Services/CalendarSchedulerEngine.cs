@@ -1,7 +1,4 @@
-using System.Collections.Concurrent;
-using DiscordBot.Models;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+﻿using System.Collections.Concurrent;
 
 namespace DiscordBot.Services;
 
@@ -52,9 +49,31 @@ public class CalendarSchedulerEngine(
         }
     }
 
+    private static readonly TimeZoneInfo ParisTimeZone = ResolveParisTimeZone();
+
+    private static TimeZoneInfo ResolveParisTimeZone()
+    {
+        try
+        {
+            // Standard IANA (Linux / Docker)
+            return TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            // Fallback Windows
+            return TimeZoneInfo.FindSystemTimeZoneById("Romance Standard Time");
+        }
+    }
+
+    internal static DateTimeOffset GetParisTime(TimeProvider provider)
+    {
+        var utcNow = provider.GetUtcNow();
+        return TimeZoneInfo.ConvertTime(utcNow, ParisTimeZone);
+    }
+
     internal async Task CheckAndTriggerJobsAsync(CancellationToken cancellationToken = default)
     {
-        var now = timeProvider.GetLocalNow();
+        var now = GetParisTime(timeProvider);
         var currentDay = now.DayOfWeek;
         var executionKey = $"{now:yyyy-MM-dd-HH-mm}";
 

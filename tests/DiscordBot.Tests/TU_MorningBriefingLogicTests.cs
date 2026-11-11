@@ -1,11 +1,11 @@
-using DiscordBot.Models;
+﻿using DiscordBot.DTO;
 using DiscordBot.Services;
 using FluentAssertions;
 
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class MorningBriefingLogicTests
+public class TU_MorningBriefingLogicTests
 {
     [TestCase(0, "Ciel dégagé", "☀️")]
     [TestCase(2, "Éclaircies", "⛅")]
@@ -25,7 +25,7 @@ public class MorningBriefingLogicTests
     public void BuildLocalAnalysis_ShouldRecommendBike_WhenWeatherIsDryAndCalm()
     {
         // Arrange
-        var aller = new CommuteSlotSummary
+        var aller = new CommuteSlotSummaryDto
         {
             TimeRange = "07h - 08h",
             MinTemp = 12,
@@ -38,7 +38,7 @@ public class MorningBriefingLogicTests
             MainEmoji = "☀️"
         };
 
-        var retour = new CommuteSlotSummary
+        var retour = new CommuteSlotSummaryDto
         {
             TimeRange = "17h - 18h",
             MinTemp = 18,
@@ -55,7 +55,7 @@ public class MorningBriefingLogicTests
         var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
 
         // Assert
-        result.Verdict.Should().Be(BikeVerdict.Ok);
+        result.Verdict.Should().Be(BikeVerdictDto.Ok);
         result.VerdictBanner.Should().Contain("Conditions idéales");
     }
 
@@ -63,7 +63,7 @@ public class MorningBriefingLogicTests
     public void BuildLocalAnalysis_ShouldAdviseCaution_WhenModerateRainOrGusts()
     {
         // Arrange
-        var aller = new CommuteSlotSummary
+        var aller = new CommuteSlotSummaryDto
         {
             TimeRange = "07h - 08h",
             MinTemp = 10,
@@ -76,7 +76,7 @@ public class MorningBriefingLogicTests
             MainEmoji = "🌧️"
         };
 
-        var retour = new CommuteSlotSummary
+        var retour = new CommuteSlotSummaryDto
         {
             TimeRange = "17h - 18h",
             MinTemp = 14,
@@ -93,7 +93,7 @@ public class MorningBriefingLogicTests
         var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
 
         // Assert
-        result.Verdict.Should().Be(BikeVerdict.Prudence);
+        result.Verdict.Should().Be(BikeVerdictDto.Prudence);
         result.VerdictBanner.Should().Contain("prudence");
     }
 
@@ -101,7 +101,7 @@ public class MorningBriefingLogicTests
     public void BuildLocalAnalysis_ShouldDiscourageBike_WhenHeavyRainOrDangerousGusts()
     {
         // Arrange
-        var aller = new CommuteSlotSummary
+        var aller = new CommuteSlotSummaryDto
         {
             TimeRange = "07h - 08h",
             MinTemp = 8,
@@ -114,7 +114,7 @@ public class MorningBriefingLogicTests
             MainEmoji = "🌧️"
         };
 
-        var retour = new CommuteSlotSummary
+        var retour = new CommuteSlotSummaryDto
         {
             TimeRange = "17h - 18h",
             MinTemp = 11,
@@ -131,7 +131,7 @@ public class MorningBriefingLogicTests
         var result = MorningBriefingService.BuildLocalAnalysis(aller, retour);
 
         // Assert
-        result.Verdict.Should().Be(BikeVerdict.Deconseille);
+        result.Verdict.Should().Be(BikeVerdictDto.Deconseille);
         result.VerdictBanner.Should().Contain("déconseillé");
     }
 }

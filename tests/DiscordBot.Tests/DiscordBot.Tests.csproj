@@ -5,6 +5,9 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
@@ -26,6 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\DiscordBot.csproj" />
+    <ProjectReference Include="..\..\DTO\DTO.csproj" />
   </ItemGroup>
 
 </Project>

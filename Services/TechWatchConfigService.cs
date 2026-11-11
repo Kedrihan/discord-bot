@@ -1,8 +1,6 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -13,14 +11,14 @@ public class TechWatchConfigService(
 {
     private readonly object _lock = new();
     private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "techwatch_settings.json");
-    private TechWatchSettings? _settings;
+    private TechWatchSettingsDto? _settings;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
 
-    public TechWatchSettings GetSettings()
+    public TechWatchSettingsDto GetSettings()
     {
         lock (_lock)
         {
@@ -29,7 +27,7 @@ public class TechWatchConfigService(
         }
     }
 
-    public async Task SaveSettingsAsync(TechWatchSettings newSettings, CancellationToken cancellationToken = default)
+    public async Task SaveSettingsAsync(TechWatchSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
         string json;
         lock (_lock)
@@ -48,14 +46,14 @@ public class TechWatchConfigService(
         logger.LogInformation("Paramètres de la veille technologique enregistrés dans {Path}", _filePath);
     }
 
-    private TechWatchSettings LoadSettings()
+    private TechWatchSettingsDto LoadSettings()
     {
         try
         {
             if (fileSystem.File.Exists(_filePath))
             {
                 var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<TechWatchSettings>(json);
+                var loaded = JsonSerializer.Deserialize<TechWatchSettingsDto>(json);
                 if (loaded != null)
                 {
                     if (string.IsNullOrWhiteSpace(loaded.GeminiApiKey))
@@ -75,7 +73,7 @@ public class TechWatchConfigService(
             logger.LogError(ex, "Erreur lors du chargement des paramètres de veille techno. Utilisation des valeurs par défaut.");
         }
 
-        var defaultSettings = new TechWatchSettings();
+        var defaultSettings = new TechWatchSettingsDto();
         var envApiKey = configuration["GEMINI_API_KEY"] ?? Environment.GetEnvironmentVariable("GEMINI_API_KEY");
         if (!string.IsNullOrWhiteSpace(envApiKey))
         {

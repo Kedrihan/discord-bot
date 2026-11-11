@@ -1,7 +1,7 @@
-using System.IO.Abstractions.TestingHelpers;
+﻿using System.IO.Abstractions.TestingHelpers;
 using System.Net;
 using Discord.WebSocket;
-using DiscordBot.Models;
+using DiscordBot.DTO;
 using DiscordBot.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -11,7 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TwitchClipServiceTests
+public class TU_TwitchClipServiceTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;
@@ -28,7 +28,7 @@ public class TwitchClipServiceTests
     {
         // Arrange
         var template = "🎬 Nouveau clip de {STREAMER} par {CREATOR} : {TITLE} [{DURATION}] ({VIEWS} vues) -> {URL}";
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "InterestingMoment123",
             Url: "https://clips.twitch.tv/InterestingMoment123",
             EmbedUrl: "https://clips.twitch.tv/embed?clip=InterestingMoment123",
@@ -56,7 +56,7 @@ public class TwitchClipServiceTests
     public void FormatClipMessage_ShouldReturnDefaultMessage_WhenTemplateIsNullOrWhitespace()
     {
         // Arrange
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "Clip456",
             Url: "https://clips.twitch.tv/Clip456",
             EmbedUrl: "https://clips.twitch.tv/embed?clip=Clip456",
@@ -87,7 +87,7 @@ public class TwitchClipServiceTests
     {
         // Arrange
         var template = "{streamer} : {creator} - {title} -> {url}";
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "Clip789",
             Url: "https://clips.twitch.tv/Clip789",
             EmbedUrl: "",
@@ -124,7 +124,7 @@ public class TwitchClipServiceTests
         var longBroadcaster = new string('B', 300);
         var longCreator = new string('C', 300);
 
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "clip_embed_test",
             Url: "https://clips.twitch.tv/clip_embed_test",
             EmbedUrl: "",
@@ -166,7 +166,7 @@ public class TwitchClipServiceTests
     public void BuildClipEmbed_ShouldSanitizeMentionsInAllExternalFields()
     {
         // Arrange
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "security_test",
             Url: "https://clips.twitch.tv/security_test",
             EmbedUrl: "",
@@ -206,7 +206,7 @@ public class TwitchClipServiceTests
     public void BuildClipEmbed_ShouldIgnoreNonHttpOrMalformedUrls()
     {
         // Arrange
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "url_test",
             Url: "javascript:alert('pwned')",
             EmbedUrl: "",
@@ -236,7 +236,7 @@ public class TwitchClipServiceTests
     {
         // Arrange
         var giantTitle = new string('X', 2500);
-        var clip = new TwitchClipInfo(
+        var clip = new TwitchClipInfoDto(
             Id: "long_clip",
             Url: "https://clips.twitch.tv/long_clip",
             EmbedUrl: "",
@@ -267,7 +267,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings { IsEnabled = false, IsClipsEnabled = true });
+        await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = false, IsClipsEnabled = true });
 
         var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
@@ -290,7 +290,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings { IsEnabled = true, IsClipsEnabled = false });
+        await configService.SaveSettingsAsync(new TwitchSettingsDto { IsEnabled = true, IsClipsEnabled = false });
 
         var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
@@ -313,13 +313,13 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             IsClipsEnabled = true,
             Channels =
             [
-                new TrackedTwitchChannel
+                new TrackedTwitchChannelDto
                 {
                     TwitchUsername = "zerator",
                     IsEnabled = true,
@@ -349,7 +349,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             IsClipsEnabled = true,
@@ -357,7 +357,7 @@ public class TwitchClipServiceTests
             ClientSecret = "test_client_secret",
             Channels =
             [
-                new TrackedTwitchChannel
+                new TrackedTwitchChannelDto
                 {
                     TwitchUsername = "zerator",
                     IsEnabled = true,
@@ -471,7 +471,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             ClientId = "helix_client_id",
             ClientSecret = "helix_secret"
@@ -546,7 +546,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings { Channels = [] });
+        await configService.SaveSettingsAsync(new TwitchSettingsDto { Channels = [] });
 
         var historyService = new TwitchClipHistoryService(_fileSystem, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
         var discordClient = new DiscordSocketClient(new DiscordSocketConfig());
@@ -569,7 +569,7 @@ public class TwitchClipServiceTests
         // Arrange
         var config = new ConfigurationBuilder().Build();
         var configService = new TwitchConfigService(_fileSystem, config, NullLogger<TwitchConfigService>.Instance);
-        await configService.SaveSettingsAsync(new TwitchSettings
+        await configService.SaveSettingsAsync(new TwitchSettingsDto
         {
             IsEnabled = true,
             IsClipsEnabled = true,

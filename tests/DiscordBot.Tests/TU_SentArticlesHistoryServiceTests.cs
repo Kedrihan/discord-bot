@@ -1,4 +1,4 @@
-using System.IO.Abstractions.TestingHelpers;
+﻿using System.IO.Abstractions.TestingHelpers;
 using DiscordBot.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class SentArticlesHistoryServiceTests
+public class TU_SentArticlesHistoryServiceTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;

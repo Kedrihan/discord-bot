@@ -1,7 +1,6 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -16,7 +15,7 @@ public class TwitchClipHistoryService(
     private bool _isLoaded;
     private readonly HashSet<string> _seenClipIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _initializedBroadcasters = new(StringComparer.OrdinalIgnoreCase);
-    private List<TwitchClipHistoryItem> _items = [];
+    private List<TwitchClipHistoryItemDto> _items = [];
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -63,7 +62,7 @@ public class TwitchClipHistoryService(
                 var trimmed = clipId.Trim();
                 if (_seenClipIds.Add(trimmed))
                 {
-                    _items.Add(new TwitchClipHistoryItem(trimmed, trimmedBroadcasterId, now));
+                    _items.Add(new TwitchClipHistoryItemDto(trimmed, trimmedBroadcasterId, now));
                 }
             }
 
@@ -95,7 +94,7 @@ public class TwitchClipHistoryService(
             {
                 if (_seenClipIds.Add(clipId))
                 {
-                    _items.Add(new TwitchClipHistoryItem(clipId, trimmedBroadcasterId, now));
+                    _items.Add(new TwitchClipHistoryItemDto(clipId, trimmedBroadcasterId, now));
                 }
             }
 
@@ -167,7 +166,7 @@ public class TwitchClipHistoryService(
                 catch
                 {
                     // Fallback to array of items
-                    var items = JsonSerializer.Deserialize<List<TwitchClipHistoryItem>>(json, JsonOptions);
+                    var items = JsonSerializer.Deserialize<List<TwitchClipHistoryItemDto>>(json, JsonOptions);
                     if (items != null)
                     {
                         _items = items;
@@ -215,6 +214,6 @@ public class TwitchClipHistoryService(
     private sealed class TwitchClipHistoryStore
     {
         public List<string> InitializedBroadcasters { get; set; } = [];
-        public List<TwitchClipHistoryItem> Clips { get; set; } = [];
+        public List<TwitchClipHistoryItemDto> Clips { get; set; } = [];
     }
 }

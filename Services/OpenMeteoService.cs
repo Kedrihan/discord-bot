@@ -1,13 +1,12 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
 public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> logger)
 {
-    public async Task<DailyCommuteWeather?> GetCommuteWeatherAsync(MorningBriefingSettings settings, CancellationToken cancellationToken = default)
+    public async Task<DailyCommuteWeatherDto?> GetCommuteWeatherAsync(MorningBriefingSettingsDto settings, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -40,7 +39,7 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
             var windGusts = hourly.GetProperty("wind_gusts_10m").EnumerateArray().Select(t => t.GetDouble()).ToList();
             var weatherCodes = hourly.GetProperty("weather_code").EnumerateArray().Select(t => t.GetInt32()).ToList();
 
-            List<HourlyWeatherSlot> slots = [];
+            List<HourlyWeatherSlotDto> slots = [];
             for (var i = 0; i < times.Count; i++)
             {
                 if (!DateTime.TryParse(times[i], out var dt))
@@ -49,7 +48,7 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
                 }
 
                 var condition = GetWeatherDescription(weatherCodes[i]);
-                slots.Add(new HourlyWeatherSlot
+                slots.Add(new HourlyWeatherSlotDto
                 {
                     Hour = dt.Hour,
                     Temperature = temps[i],
@@ -69,7 +68,7 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
             var allerSummary = BuildSummary("Trajet Aller", $"{settings.MorningStartHour:D2}h - {settings.MorningEndHour:D2}h", allerSlots);
             var retourSummary = BuildSummary("Trajet Retour", $"{settings.EveningStartHour:D2}h - {settings.EveningEndHour:D2}h", retourSlots);
 
-            return new DailyCommuteWeather(allerSummary, retourSummary);
+            return new DailyCommuteWeatherDto(allerSummary, retourSummary);
         }
         catch (Exception ex)
         {
@@ -78,11 +77,11 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
         }
     }
 
-    private static CommuteSlotSummary BuildSummary(string title, string timeRange, List<HourlyWeatherSlot> slots)
+    private static CommuteSlotSummaryDto BuildSummary(string title, string timeRange, List<HourlyWeatherSlotDto> slots)
     {
         if (slots.Count == 0)
         {
-            return new CommuteSlotSummary { Title = title, TimeRange = timeRange, MainCondition = "Données indisponibles" };
+            return new CommuteSlotSummaryDto { Title = title, TimeRange = timeRange, MainCondition = "Données indisponibles" };
         }
 
         var mostSevereSlot = slots
@@ -90,7 +89,7 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
             .ThenByDescending(s => s.WindGusts)
             .First();
 
-        return new CommuteSlotSummary
+        return new CommuteSlotSummaryDto
         {
             Title = title,
             TimeRange = timeRange,
@@ -105,20 +104,20 @@ public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> l
         };
     }
 
-    public static WeatherCondition GetWeatherDescription(int code) => code switch
+    public static WeatherConditionDto GetWeatherDescription(int code) => code switch
     {
-        0 => new WeatherCondition("Ciel dégagé", "☀️"),
-        1 => new WeatherCondition("Principalement dégagé", "🌤️"),
-        2 => new WeatherCondition("Éclaircies", "⛅"),
-        3 => new WeatherCondition("Couvert", "☁️"),
-        45 or 48 => new WeatherCondition("Brouillard", "🌫️"),
-        51 or 53 or 55 => new WeatherCondition("Bruine", "🌦️"),
-        61 => new WeatherCondition("Pluie faible", "🌧️"),
-        63 => new WeatherCondition("Pluie modérée", "🌧️"),
-        65 => new WeatherCondition("Pluie forte", "🌧️"),
-        71 or 73 or 75 => new WeatherCondition("Chutes de neige", "🌨️"),
-        80 or 81 or 82 => new WeatherCondition("Averses de pluie", "🌦️"),
-        95 or 96 or 99 => new WeatherCondition("Orage", "⛈️"),
-        _ => new WeatherCondition("Variable", "⛅")
+        0 => new WeatherConditionDto("Ciel dégagé", "☀️"),
+        1 => new WeatherConditionDto("Principalement dégagé", "🌤️"),
+        2 => new WeatherConditionDto("Éclaircies", "⛅"),
+        3 => new WeatherConditionDto("Couvert", "☁️"),
+        45 or 48 => new WeatherConditionDto("Brouillard", "🌫️"),
+        51 or 53 or 55 => new WeatherConditionDto("Bruine", "🌦️"),
+        61 => new WeatherConditionDto("Pluie faible", "🌧️"),
+        63 => new WeatherConditionDto("Pluie modérée", "🌧️"),
+        65 => new WeatherConditionDto("Pluie forte", "🌧️"),
+        71 or 73 or 75 => new WeatherConditionDto("Chutes de neige", "🌨️"),
+        80 or 81 or 82 => new WeatherConditionDto("Averses de pluie", "🌦️"),
+        95 or 96 or 99 => new WeatherConditionDto("Orage", "⛈️"),
+        _ => new WeatherConditionDto("Variable", "⛅")
     };
 }

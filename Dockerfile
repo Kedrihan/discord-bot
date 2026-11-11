@@ -4,6 +4,7 @@ WORKDIR /src
 
 # Copie et restauration des dépendances en cache
 COPY ["DiscordBot.csproj", "./"]
+COPY ["DTO/DTO.csproj", "DTO/"]
 RUN dotnet restore "DiscordBot.csproj"
 
 # Copie du code source et publication

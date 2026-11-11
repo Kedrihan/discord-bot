@@ -1,12 +1,6 @@
-namespace DiscordBot.Models;
+namespace DiscordBot.DTO;
 
-public enum DestinationType
-{
-    UserDm,
-    Channel
-}
-
-public class TechWatchSettings
+public class TechWatchSettingsDto
 {
     public bool IsEnabled { get; set; } = true;
 
@@ -15,7 +9,7 @@ public class TechWatchSettings
     public TimeOnly ScheduleTime { get; set; } = new(7, 30);
 
     // Destinataire
-    public DestinationType DestinationType { get; set; } = DestinationType.UserDm;
+    public DestinationTypeDto DestinationType { get; set; } = DestinationTypeDto.UserDm;
     public string TargetId { get; set; } = "116893981526196227";
 
     // Thématiques / Sujets
@@ -38,14 +32,3 @@ public class TechWatchSettings
     public int MaxArticles { get; set; } = 7;
     public bool TranslateToFrench { get; set; } = true;
 }
-
-public class NewsArticle
-{
-    public string Title { get; set; } = string.Empty;
-    public string Url { get; set; } = string.Empty;
-    public string Source { get; set; } = string.Empty;
-    public string Language { get; set; } = "en";
-    public DateTimeOffset PublishedAt { get; set; } = DateTimeOffset.UtcNow;
-}
-
-public record TechWatchExecutionResult(bool Success, string Message);

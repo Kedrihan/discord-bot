@@ -1,10 +1,10 @@
-using DiscordBot.Services;
+﻿using DiscordBot.Services;
 using FluentAssertions;
 
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TechWatchServiceTests
+public class TU_TechWatchServiceTests
 {
     [Test]
     public void ExtractUrls_ShouldExtractAllBracketedUrls()

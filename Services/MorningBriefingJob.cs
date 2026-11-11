@@ -1,4 +1,4 @@
-using DiscordBot.Models;
+﻿using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -8,20 +8,20 @@ public class MorningBriefingJob(
 {
     public string JobName => "Morning Briefing Vélo";
 
-    public CalendarSchedule GetSchedule()
+    public CalendarScheduleDto GetSchedule()
     {
         var settings = configService.GetSettings();
-        return new CalendarSchedule(
+        return new CalendarScheduleDto(
             settings.IsEnabled,
             settings.ScheduleDays,
             settings.ScheduleTime);
     }
 
-    public async Task<CalendarJobExecutionResult> ExecuteAsync(CancellationToken cancellationToken = default)
+    public async Task<CalendarJobExecutionResultDto> ExecuteAsync(CancellationToken cancellationToken = default)
     {
         var result = await briefingService.ExecuteBriefingAsync(isManualTest: false, cancellationToken);
         return result.Success
-            ? CalendarJobExecutionResult.Succeeded(result.Message)
-            : CalendarJobExecutionResult.Failed(result.Message);
+            ? CalendarJobExecutionResultDto.Succeeded(result.Message)
+            : CalendarJobExecutionResultDto.Failed(result.Message);
     }
 }

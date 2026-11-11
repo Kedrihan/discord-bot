@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-
 namespace DiscordBot.Services;
 
 public class TwitchClipScheduler(

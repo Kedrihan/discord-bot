@@ -1,4 +1,4 @@
-@page "/briefing"
+﻿@page "/briefing"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
 @rendermode InteractiveServer
 @inject MorningBriefingConfigService ConfigService
@@ -84,14 +84,14 @@
                     <label class="form-label small fw-semibold text-secondary d-block">Destination Discord</label>
                     <div class="form-check form-check-inline">
                         <input class="form-check-input" type="radio" name="destType" id="destDm" 
-                               checked="@(settings.DestinationType == DestinationType.UserDm)"
-                               @onchange="() => settings.DestinationType = DestinationType.UserDm">
+                               checked="@(settings.DestinationType == DestinationTypeDto.UserDm)"
+                               @onchange="() => settings.DestinationType = DestinationTypeDto.UserDm">
                         <label class="form-check-label" for="destDm">Message Privé (MP)</label>
                     </div>
                     <div class="form-check form-check-inline">
                         <input class="form-check-input" type="radio" name="destType" id="destChan" 
-                               checked="@(settings.DestinationType == DestinationType.Channel)"
-                               @onchange="() => settings.DestinationType = DestinationType.Channel">
+                               checked="@(settings.DestinationType == DestinationTypeDto.Channel)"
+                               @onchange="() => settings.DestinationType = DestinationTypeDto.Channel">
                         <label class="form-check-label" for="destChan">Salon de serveur</label>
                     </div>
                 </div>
@@ -99,7 +99,7 @@
                 <!-- ID Discord cible -->
                 <div class="mb-2">
                     <label class="form-label small fw-semibold text-secondary">
-                        @(settings.DestinationType == DestinationType.UserDm ? "Identifiant Utilisateur (User ID)" : "Identifiant Salon (Channel ID)")
+                        @(settings.DestinationType == DestinationTypeDto.UserDm ? "Identifiant Utilisateur (User ID)" : "Identifiant Salon (Channel ID)")
                     </label>
                     <input type="text" class="form-control bg-dark text-light border-secondary font-monospace" @bind="settings.TargetId" />
                 </div>
@@ -175,7 +175,7 @@
 </div>
 
 @code {
-    private MorningBriefingSettings settings = new();
+    private MorningBriefingSettingsDto settings = new();
     private bool isTesting = false;
     private string? feedbackMessage;
     private bool isSuccessFeedback = true;

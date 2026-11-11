@@ -1,4 +1,4 @@
-@page "/twitch"
+﻿@page "/twitch"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
 @rendermode InteractiveServer
 @implements IDisposable
@@ -117,7 +117,7 @@
                                 Alertes instantanées poussées par Twitch via WebSocket.
                             </div>
                         }
-                        else if (!string.IsNullOrWhiteSpace(settings.UserAccessToken) && (EventSubService.Status == TwitchEventSubStatus.Connecting || EventSubService.Status == TwitchEventSubStatus.Reconnecting))
+                        else if (!string.IsNullOrWhiteSpace(settings.UserAccessToken) && (EventSubService.Status == TwitchEventSubStatusDto.Connecting || EventSubService.Status == TwitchEventSubStatusDto.Reconnecting))
                         {
                             <div class="d-flex align-items-center gap-2 mb-1">
                                 <span class="spinner-border spinner-border-sm text-warning" role="status"></span>
@@ -160,7 +160,7 @@
                                     🟢 Connecté (EventSub temps réel &lt; 1s)
                                 </span>
                             }
-                            else if (EventSubService.Status == TwitchEventSubStatus.Connecting || EventSubService.Status == TwitchEventSubStatus.Reconnecting)
+                            else if (EventSubService.Status == TwitchEventSubStatusDto.Connecting || EventSubService.Status == TwitchEventSubStatusDto.Reconnecting)
                             {
                                 <span class="badge bg-warning text-dark">
                                     🟡 En cours de connexion...
@@ -485,7 +485,7 @@
 </div>
 
 @code {
-    private TwitchSettings settings = new();
+    private TwitchSettingsDto settings = new();
     private bool showSecret = false;
     private bool showUserToken = false;
     private bool isChecking = false;
@@ -498,7 +498,7 @@
 
     // État du formulaire d'ajout/édition
     private bool isAddingChannel = false;
-    private TrackedTwitchChannel? editingChannel = null;
+    private TrackedTwitchChannelDto? editingChannel = null;
     private string formTwitchUsername = string.Empty;
     private string formDiscordChannelId = string.Empty;
     private string formCustomMessage = "🔴 **{streamer}** est en direct sur Twitch !\n{url}";
@@ -546,7 +546,7 @@
         formClipCustomMessage = "🎬 Nouveau clip de **{streamer}** créé par **{creator}** !\n{url}";
     }
 
-    private void EditChannel(TrackedTwitchChannel channel)
+    private void EditChannel(TrackedTwitchChannelDto channel)
     {
         isAddingChannel = false;
         editingChannel = channel;
@@ -589,13 +589,13 @@
         await SaveSettingsAsync();
     }
 
-    private async Task ToggleChannelEnabledAsync(TrackedTwitchChannel channel)
+    private async Task ToggleChannelEnabledAsync(TrackedTwitchChannelDto channel)
     {
         channel.IsEnabled = !channel.IsEnabled;
         await SaveSettingsAsync();
     }
 
-    private async Task ToggleChannelClipEnabledAsync(TrackedTwitchChannel channel)
+    private async Task ToggleChannelClipEnabledAsync(TrackedTwitchChannelDto channel)
     {
         channel.IsClipEnabled = !channel.IsClipEnabled;
         await SaveSettingsAsync();
@@ -672,7 +672,7 @@
                 return;
             }
 
-            settings.Channels.Add(new TrackedTwitchChannel
+            settings.Channels.Add(new TrackedTwitchChannelDto
             {
                 TwitchUsername = rawUsername,
                 DiscordChannelId = channelIdTrimmed,
@@ -690,7 +690,7 @@
         isSuccessFeedback = true;
     }
 
-    private async Task RemoveChannelAsync(TrackedTwitchChannel channel)
+    private async Task RemoveChannelAsync(TrackedTwitchChannelDto channel)
     {
         settings.Channels.Remove(channel);
         await SaveSettingsAsync();

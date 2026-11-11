@@ -3,6 +3,8 @@ services:
     build: .
     container_name: discord-bot
     restart: unless-stopped
+    environment:
+      - TZ=Europe/Paris
     ports:
       - "8080:8080"
     volumes:

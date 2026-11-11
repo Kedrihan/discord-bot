@@ -1,14 +1,13 @@
-using System.Text;
-using DiscordBot.Models;
+﻿using System.Text;
+using DiscordBot.DTO;
 using Google.GenAI;
 using Google.GenAI.Types;
-using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
 public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
 {
-    public async Task<string> SummarizeAndFormatArticlesAsync(List<NewsArticle> articles, TechWatchSettings settings)
+    public async Task<string> SummarizeAndFormatArticlesAsync(List<NewsArticleDto> articles, TechWatchSettingsDto settings)
     {
         if (articles.Count == 0)
         {
@@ -36,7 +35,7 @@ public class GeminiSummarizerService(ILogger<GeminiSummarizerService> logger)
         return FormatDirectFallback(articles, settings.MaxArticles);
     }
 
-    private async Task<string> CallGeminiAsync(List<NewsArticle> articles, TechWatchSettings settings)
+    private async Task<string> CallGeminiAsync(List<NewsArticleDto> articles, TechWatchSettingsDto settings)
     {
         var model = string.IsNullOrWhiteSpace(settings.GeminiModel) || settings.GeminiModel.StartsWith("gemini-1.") || settings.GeminiModel == "gemini-2.0-flash"
             ? "gemini-flash-latest"
@@ -96,7 +95,7 @@ Consignes :
             .Trim();
     }
 
-    private static string FormatDirectFallback(List<NewsArticle> articles, int maxArticles)
+    private static string FormatDirectFallback(List<NewsArticleDto> articles, int maxArticles)
     {
         var sb = new StringBuilder();
         foreach (var a in articles.Take(maxArticles))

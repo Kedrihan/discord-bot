@@ -1,8 +1,7 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -15,7 +14,7 @@ public class TwitchLiveService(
 {
     public static readonly Color TwitchPurple = new(0x91, 0x46, 0xFF);
     private readonly SemaphoreSlim _checkLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, TwitchStreamInfo> _liveStreamsCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, TwitchStreamInfoDto> _liveStreamsCache = new(StringComparer.OrdinalIgnoreCase);
 
     public event Action? OnLiveStatusChanged;
 
@@ -25,13 +24,13 @@ public class TwitchLiveService(
         return _liveStreamsCache.ContainsKey(username.Trim());
     }
 
-    public TwitchStreamInfo? GetLiveStreamInfo(string? username)
+    public TwitchStreamInfoDto? GetLiveStreamInfo(string? username)
     {
         if (string.IsNullOrWhiteSpace(username)) return null;
         return _liveStreamsCache.TryGetValue(username.Trim(), out var info) ? info : null;
     }
 
-    public IReadOnlyDictionary<string, TwitchStreamInfo> GetLiveStreams() => _liveStreamsCache;
+    public IReadOnlyDictionary<string, TwitchStreamInfoDto> GetLiveStreams() => _liveStreamsCache;
 
     public static string FormatMessage(string template, string streamer, string title, string game, string url)
     {
@@ -60,7 +59,7 @@ public class TwitchLiveService(
             .Replace("<@", "<\u200b@", StringComparison.OrdinalIgnoreCase);
     }
 
-    public static Embed BuildStreamEmbed(TwitchStreamInfo stream, string? avatarUrl)
+    public static Embed BuildStreamEmbed(TwitchStreamInfoDto stream, string? avatarUrl)
     {
         var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
         var title = string.IsNullOrWhiteSpace(stream.Title) ? "En direct sur Twitch !" : stream.Title.Trim();
@@ -118,12 +117,12 @@ public class TwitchLiveService(
         return embed.Build();
     }
 
-    public async Task<TwitchExecutionResult> CheckStreamsAsync(CancellationToken ct = default)
+    public async Task<TwitchExecutionResultDto> CheckStreamsAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
         if (!settings.IsEnabled)
         {
-            return new TwitchExecutionResult(false, "Les notifications Twitch sont actuellement désactivées.");
+            return new TwitchExecutionResultDto(false, "Les notifications Twitch sont actuellement désactivées.");
         }
 
         var activeChannels = settings.Channels
@@ -132,12 +131,12 @@ public class TwitchLiveService(
 
         if (activeChannels.Count == 0)
         {
-            return new TwitchExecutionResult(false, "Aucune chaîne Twitch active à surveiller.");
+            return new TwitchExecutionResultDto(false, "Aucune chaîne Twitch active à surveiller.");
         }
 
         if (!await _checkLock.WaitAsync(0, ct))
         {
-            return new TwitchExecutionResult(false, "Une vérification des streams est déjà en cours d'exécution.");
+            return new TwitchExecutionResultDto(false, "Une vérification des streams est déjà en cours d'exécution.");
         }
 
         try
@@ -204,7 +203,7 @@ public class TwitchLiveService(
 
                     var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
 
-                    await stateService.SetActiveStreamAsync(new TwitchActiveStreamState
+                    await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
                     {
                         TwitchUsername = stream.UserLogin,
                         StreamId = stream.StreamId,
@@ -233,7 +232,7 @@ public class TwitchLiveService(
                 await stateService.RemoveActiveStreamAsync(state.TwitchUsername, ct);
             }
 
-            return new TwitchExecutionResult(true, "Vérification des streams Twitch terminée.");
+            return new TwitchExecutionResultDto(true, "Vérification des streams Twitch terminée.");
         }
         finally
         {
@@ -267,7 +266,7 @@ public class TwitchLiveService(
                 return;
             }
 
-            TwitchStreamInfo stream;
+            TwitchStreamInfoDto stream;
             try
             {
                 var streams = await twitchApiClient.GetStreamsAsync([broadcasterLogin], ct);
@@ -278,7 +277,7 @@ public class TwitchLiveService(
                 }
                 else
                 {
-                    stream = new TwitchStreamInfo
+                    stream = new TwitchStreamInfoDto
                     {
                         StreamId = $"es_{broadcasterUserId}_{startedAt.ToUnixTimeSeconds()}",
                         UserId = broadcasterUserId,
@@ -295,7 +294,7 @@ public class TwitchLiveService(
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Erreur lors de la récupération des détails Helix pour {Streamer}. Utilisation du fallback.", broadcasterLogin);
-                stream = new TwitchStreamInfo
+                stream = new TwitchStreamInfoDto
                 {
                     StreamId = $"es_{broadcasterUserId}_{startedAt.ToUnixTimeSeconds()}",
                     UserId = broadcasterUserId,
@@ -346,7 +345,7 @@ public class TwitchLiveService(
 
                 var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
 
-                await stateService.SetActiveStreamAsync(new TwitchActiveStreamState
+                await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
                 {
                     TwitchUsername = stream.UserLogin,
                     StreamId = stream.StreamId,
@@ -400,28 +399,28 @@ public class TwitchLiveService(
         }
     }
 
-    public async Task<TwitchExecutionResult> TestNotificationAsync(string username, CancellationToken ct = default)
+    public async Task<TwitchExecutionResultDto> TestNotificationAsync(string username, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(username))
         {
-            return new TwitchExecutionResult(false, "Nom d'utilisateur Twitch non renseigné.");
+            return new TwitchExecutionResultDto(false, "Nom d'utilisateur Twitch non renseigné.");
         }
 
         var settings = configService.GetSettings();
         var channelConfig = settings.Channels.FirstOrDefault(c => string.Equals(c.TwitchUsername, username, StringComparison.OrdinalIgnoreCase));
         if (channelConfig == null)
         {
-            return new TwitchExecutionResult(false, $"La chaîne Twitch '{username}' n'est pas dans la liste des chaînes suivies.");
+            return new TwitchExecutionResultDto(false, $"La chaîne Twitch '{username}' n'est pas dans la liste des chaînes suivies.");
         }
 
         if (!ulong.TryParse(channelConfig.DiscordChannelId, out var channelId))
         {
-            return new TwitchExecutionResult(false, $"ID de salon Discord invalide : '{channelConfig.DiscordChannelId}'.");
+            return new TwitchExecutionResultDto(false, $"ID de salon Discord invalide : '{channelConfig.DiscordChannelId}'.");
         }
 
         if (discordClient.GetChannel(channelId) is not IMessageChannel messageChannel)
         {
-            return new TwitchExecutionResult(false, $"Le salon Discord avec l'ID {channelId} est introuvable ou inaccessible par le bot.");
+            return new TwitchExecutionResultDto(false, $"Le salon Discord avec l'ID {channelId} est introuvable ou inaccessible par le bot.");
         }
 
         try
@@ -432,7 +431,7 @@ public class TwitchLiveService(
             if (stream == null)
             {
                 // Si la chaîne n'est pas en direct, on utilise des données simulées de test
-                stream = new TwitchStreamInfo
+                stream = new TwitchStreamInfoDto
                 {
                     StreamId = "test_stream_123",
                     UserId = "test_user_id",
@@ -458,12 +457,12 @@ public class TwitchLiveService(
 
             await messageChannel.SendMessageAsync(text: fullTestText, embed: embed);
 
-            return new TwitchExecutionResult(true, $"Notification de test envoyée avec succès dans le salon <#{channelId}>.");
+            return new TwitchExecutionResultDto(true, $"Notification de test envoyée avec succès dans le salon <#{channelId}>.");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de l'envoi de la notification de test pour {Username}.", username);
-            return new TwitchExecutionResult(false, $"Erreur lors de l'envoi : {ex.Message}");
+            return new TwitchExecutionResultDto(false, $"Erreur lors de l'envoi : {ex.Message}");
         }
     }
 
@@ -511,7 +510,7 @@ public class TwitchLiveService(
         }
     }
 
-    private void UpdateCache(IReadOnlyList<TwitchStreamInfo> onlineStreams)
+    private void UpdateCache(IReadOnlyList<TwitchStreamInfoDto> onlineStreams)
     {
         var activeLogins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var stream in onlineStreams)

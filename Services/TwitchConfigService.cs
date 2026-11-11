@@ -1,8 +1,6 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -14,14 +12,14 @@ public class TwitchConfigService(
     private readonly object _lock = new();
     private readonly SemaphoreSlim _fileLock = new(1, 1);
     private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "twitch_settings.json");
-    private TwitchSettings? _settings;
+    private TwitchSettingsDto? _settings;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
 
-    public TwitchSettings GetSettings()
+    public TwitchSettingsDto GetSettings()
     {
         lock (_lock)
         {
@@ -30,7 +28,7 @@ public class TwitchConfigService(
         }
     }
 
-    public async Task SaveSettingsAsync(TwitchSettings newSettings, CancellationToken cancellationToken = default)
+    public async Task SaveSettingsAsync(TwitchSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
         newSettings.CheckIntervalSeconds = Math.Clamp(newSettings.CheckIntervalSeconds, 15, 3600);
         newSettings.ClipCheckIntervalSeconds = Math.Clamp(newSettings.ClipCheckIntervalSeconds, 15, 3600);
@@ -60,14 +58,14 @@ public class TwitchConfigService(
         }
     }
 
-    private TwitchSettings LoadSettings()
+    private TwitchSettingsDto LoadSettings()
     {
         try
         {
             if (fileSystem.File.Exists(_filePath))
             {
                 var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<TwitchSettings>(json);
+                var loaded = JsonSerializer.Deserialize<TwitchSettingsDto>(json);
                 if (loaded != null)
                 {
                     ApplyEnvironmentFallbacks(loaded);
@@ -80,12 +78,12 @@ public class TwitchConfigService(
             logger.LogError(ex, "Erreur lors du chargement des paramètres Twitch. Utilisation des valeurs par défaut.");
         }
 
-        var defaultSettings = new TwitchSettings();
+        var defaultSettings = new TwitchSettingsDto();
         ApplyEnvironmentFallbacks(defaultSettings);
         return defaultSettings;
     }
 
-    private void ApplyEnvironmentFallbacks(TwitchSettings target)
+    private void ApplyEnvironmentFallbacks(TwitchSettingsDto target)
     {
         if (string.IsNullOrWhiteSpace(target.ClientId))
         {

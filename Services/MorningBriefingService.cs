@@ -1,10 +1,9 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.Models;
+using DiscordBot.DTO;
 using Google.GenAI;
 using Google.GenAI.Types;
-using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 
@@ -17,36 +16,36 @@ public class MorningBriefingService(
 {
     private record VerdictVisual(Color Color, string Icon);
 
-    public async Task<BriefingExecutionResult> GenerateBriefingEmbedAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
+    public async Task<BriefingExecutionResultDto> GenerateBriefingEmbedAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
     {
         var settings = configService.GetSettings();
         var commute = await weatherService.GetCommuteWeatherAsync(settings, cancellationToken);
         if (commute == null)
         {
-            return new BriefingExecutionResult(false, "Impossible de récupérer les prévisions météo Open-Meteo.");
+            return new BriefingExecutionResultDto(false, "Impossible de récupérer les prévisions météo Open-Meteo.");
         }
 
         var briefingResult = await AnalyzeWithGeminiAsync(commute.Aller, commute.Retour, settings);
         var embed = BuildDiscordEmbed(briefingResult, commute.Aller, commute.Retour, settings, isManualTest);
-        return new BriefingExecutionResult(true, "Briefing généré avec succès.", embed);
+        return new BriefingExecutionResultDto(true, "Briefing généré avec succès.", embed);
     }
 
-    public async Task<BriefingExecutionResult> ExecuteBriefingAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
+    public async Task<BriefingExecutionResultDto> ExecuteBriefingAsync(bool isManualTest = false, CancellationToken cancellationToken = default)
     {
         var settings = configService.GetSettings();
         if (!settings.IsEnabled && !isManualTest)
         {
-            return new BriefingExecutionResult(false, "Le Morning Briefing est désactivé.");
+            return new BriefingExecutionResultDto(false, "Le Morning Briefing est désactivé.");
         }
 
         if (discordClient.ConnectionState != ConnectionState.Connected)
         {
-            return new BriefingExecutionResult(false, "Le bot Discord n'est pas connecté.");
+            return new BriefingExecutionResultDto(false, "Le bot Discord n'est pas connecté.");
         }
 
         if (!ulong.TryParse(settings.TargetId, out var targetId) || targetId == 0)
         {
-            return new BriefingExecutionResult(false, "L'identifiant Discord cible est invalide.");
+            return new BriefingExecutionResultDto(false, "L'identifiant Discord cible est invalide.");
         }
 
         logger.LogInformation("Génération du Morning Briefing Vélo (Test: {IsTest})...", isManualTest);
@@ -59,14 +58,14 @@ public class MorningBriefingService(
 
         try
         {
-            if (settings.DestinationType == DestinationType.UserDm)
+            if (settings.DestinationType == DestinationTypeDto.UserDm)
             {
                 IUser? user = discordClient.GetUser(targetId);
                 user ??= await discordClient.Rest.GetUserAsync(targetId);
 
                 if (user == null)
                 {
-                    return new BriefingExecutionResult(false, $"Utilisateur Discord `{targetId}` introuvable.");
+                    return new BriefingExecutionResultDto(false, $"Utilisateur Discord `{targetId}` introuvable.");
                 }
 
                 var dm = await user.CreateDMChannelAsync();
@@ -79,23 +78,23 @@ public class MorningBriefingService(
 
                 if (channel == null)
                 {
-                    return new BriefingExecutionResult(false, $"Salon Discord `{targetId}` introuvable.");
+                    return new BriefingExecutionResultDto(false, $"Salon Discord `{targetId}` introuvable.");
                 }
 
                 await channel.SendMessageAsync(embed: genResult.Embed);
             }
 
             logger.LogInformation("Morning Briefing envoyé avec succès sur Discord !");
-            return new BriefingExecutionResult(true, "Briefing envoyé avec succès sur Discord !", genResult.Embed);
+            return new BriefingExecutionResultDto(true, "Briefing envoyé avec succès sur Discord !", genResult.Embed);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de l'envoi du Morning Briefing sur Discord");
-            return new BriefingExecutionResult(false, $"Erreur Discord : {ex.Message}");
+            return new BriefingExecutionResultDto(false, $"Erreur Discord : {ex.Message}");
         }
     }
 
-    private async Task<MorningBriefingResult> AnalyzeWithGeminiAsync(CommuteSlotSummary aller, CommuteSlotSummary retour, MorningBriefingSettings settings)
+    private async Task<MorningBriefingResultDto> AnalyzeWithGeminiAsync(CommuteSlotSummaryDto aller, CommuteSlotSummaryDto retour, MorningBriefingSettingsDto settings)
     {
         var apiKey = techWatchConfigService.GetSettings().GeminiApiKey;
         var model = techWatchConfigService.GetSettings().GeminiModel;
@@ -173,12 +172,12 @@ Consignes strictes :
 
             var verdict = verdictStr?.ToUpperInvariant() switch
             {
-                "DECONSEILLE" => BikeVerdict.Deconseille,
-                "PRUDENCE" => BikeVerdict.Prudence,
-                _ => BikeVerdict.Ok
+                "DECONSEILLE" => BikeVerdictDto.Deconseille,
+                "PRUDENCE" => BikeVerdictDto.Prudence,
+                _ => BikeVerdictDto.Ok
             };
 
-            return new MorningBriefingResult
+            return new MorningBriefingResultDto
             {
                 Verdict = verdict,
                 VerdictBanner = banner ?? "Météo du jour",
@@ -194,7 +193,7 @@ Consignes strictes :
         }
     }
 
-    public static MorningBriefingResult BuildLocalAnalysis(CommuteSlotSummary aller, CommuteSlotSummary retour)
+    public static MorningBriefingResultDto BuildLocalAnalysis(CommuteSlotSummaryDto aller, CommuteSlotSummaryDto retour)
     {
         var maxPrecip = Math.Max(aller.TotalPrecipitation, retour.TotalPrecipitation);
         var maxGusts = Math.Max(aller.MaxWindGusts, retour.MaxWindGusts);
@@ -202,9 +201,9 @@ Consignes strictes :
 
         if (maxPrecip > 1.5 || maxGusts > 50)
         {
-            return new MorningBriefingResult
+            return new MorningBriefingResultDto
             {
-                Verdict = BikeVerdict.Deconseille,
+                Verdict = BikeVerdictDto.Deconseille,
                 VerdictBanner = "🛑 Vélo déconseillé aujourd'hui : conditions météo difficiles",
                 AllerSummary = FormatSlotLine(aller),
                 RetourSummary = FormatSlotLine(retour),
@@ -214,9 +213,9 @@ Consignes strictes :
 
         if (maxPrecip > 0.2 || maxRainProb > 40 || maxGusts > 35)
         {
-            return new MorningBriefingResult
+            return new MorningBriefingResultDto
             {
-                Verdict = BikeVerdict.Prudence,
+                Verdict = BikeVerdictDto.Prudence,
                 VerdictBanner = "⚠️ Vélo possible avec prudence : risque d'humidité ou vent",
                 AllerSummary = FormatSlotLine(aller),
                 RetourSummary = FormatSlotLine(retour),
@@ -224,9 +223,9 @@ Consignes strictes :
             };
         }
 
-        return new MorningBriefingResult
+        return new MorningBriefingResultDto
         {
-            Verdict = BikeVerdict.Ok,
+            Verdict = BikeVerdictDto.Ok,
             VerdictBanner = "✅ Conditions idéales pour aller au travail à vélo !",
             AllerSummary = FormatSlotLine(aller),
             RetourSummary = FormatSlotLine(retour),
@@ -234,16 +233,16 @@ Consignes strictes :
         };
     }
 
-    private static string FormatSlotLine(CommuteSlotSummary slot) =>
+    private static string FormatSlotLine(CommuteSlotSummaryDto slot) =>
         $"{slot.MainEmoji} **{slot.MainCondition}** ({slot.MinTemp:F0}°C - {slot.MaxTemp:F0}°C), pluie {slot.MaxRainProbability}%, rafales {slot.MaxWindGusts:F0} km/h.";
 
-    private static Embed BuildDiscordEmbed(MorningBriefingResult result, CommuteSlotSummary aller, CommuteSlotSummary retour, MorningBriefingSettings settings, bool isTest)
+    private static Embed BuildDiscordEmbed(MorningBriefingResultDto result, CommuteSlotSummaryDto aller, CommuteSlotSummaryDto retour, MorningBriefingSettingsDto settings, bool isTest)
     {
         var visual = result.Verdict switch
         {
-            BikeVerdict.Ok => new VerdictVisual(new Color(0x2e, 0xcc, 0x71), "🟢"),
-            BikeVerdict.Prudence => new VerdictVisual(new Color(0xe6, 0x7e, 0x22), "🟠"),
-            BikeVerdict.Deconseille => new VerdictVisual(new Color(0xe7, 0x4c, 0x3c), "🔴"),
+            BikeVerdictDto.Ok => new VerdictVisual(new Color(0x2e, 0xcc, 0x71), "🟢"),
+            BikeVerdictDto.Prudence => new VerdictVisual(new Color(0xe6, 0x7e, 0x22), "🟠"),
+            BikeVerdictDto.Deconseille => new VerdictVisual(new Color(0xe7, 0x4c, 0x3c), "🔴"),
             _ => new VerdictVisual(new Color(0x34, 0x98, 0xdb), "🔵")
         };
 

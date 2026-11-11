@@ -1,8 +1,7 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -16,7 +15,7 @@ public class TwitchClipService(
 {
     private readonly SemaphoreSlim _checkLock = new(1, 1);
 
-    public static string FormatClipMessage(string template, TwitchClipInfo clip)
+    public static string FormatClipMessage(string template, TwitchClipInfoDto clip)
     {
         var cleanStreamer = TwitchLiveService.SanitizeUntrustedText(clip.BroadcasterName);
         var cleanCreator = TwitchLiveService.SanitizeUntrustedText(clip.CreatorName);
@@ -53,7 +52,7 @@ public class TwitchClipService(
         return formatted;
     }
 
-    public static Embed BuildClipEmbed(TwitchClipInfo clip)
+    public static Embed BuildClipEmbed(TwitchClipInfoDto clip)
     {
         var cleanTitle = TwitchLiveService.SanitizeUntrustedText(clip.Title);
         var title = string.IsNullOrWhiteSpace(cleanTitle) ? "Nouveau clip Twitch !" : cleanTitle.Trim();
@@ -120,17 +119,17 @@ public class TwitchClipService(
         return embed.Build();
     }
 
-    public async Task<TwitchClipExecutionResult> CheckNewClipsAsync(CancellationToken ct = default)
+    public async Task<TwitchClipExecutionResultDto> CheckNewClipsAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
         if (!settings.IsEnabled)
         {
-            return new TwitchClipExecutionResult(false, "Les notifications Twitch sont actuellement désactivées.");
+            return new TwitchClipExecutionResultDto(false, "Les notifications Twitch sont actuellement désactivées.");
         }
 
         if (!settings.IsClipsEnabled)
         {
-            return new TwitchClipExecutionResult(false, "Les notifications de clips Twitch sont actuellement désactivées.");
+            return new TwitchClipExecutionResultDto(false, "Les notifications de clips Twitch sont actuellement désactivées.");
         }
 
         var activeChannels = settings.Channels
@@ -139,12 +138,12 @@ public class TwitchClipService(
 
         if (activeChannels.Count == 0)
         {
-            return new TwitchClipExecutionResult(false, "Aucune chaîne Twitch active configurée pour les clips.");
+            return new TwitchClipExecutionResultDto(false, "Aucune chaîne Twitch active configurée pour les clips.");
         }
 
         if (!await _checkLock.WaitAsync(0, ct))
         {
-            return new TwitchClipExecutionResult(false, "Une vérification des clips est déjà en cours d'exécution.");
+            return new TwitchClipExecutionResultDto(false, "Une vérification des clips est déjà en cours d'exécution.");
         }
 
         try
@@ -218,7 +217,7 @@ public class TwitchClipService(
                 }
             }
 
-            return new TwitchClipExecutionResult(true, $"Vérification des clips Twitch terminée ({processedClipsCount} nouveau(x) clip(s) notifié(s)).", processedClipsCount);
+            return new TwitchClipExecutionResultDto(true, $"Vérification des clips Twitch terminée ({processedClipsCount} nouveau(x) clip(s) notifié(s)).", processedClipsCount);
         }
         finally
         {
@@ -226,37 +225,37 @@ public class TwitchClipService(
         }
     }
 
-    public async Task<TwitchClipExecutionResult> TestClipNotificationAsync(string username, CancellationToken ct = default)
+    public async Task<TwitchClipExecutionResultDto> TestClipNotificationAsync(string username, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(username))
         {
-            return new TwitchClipExecutionResult(false, "Le nom d'utilisateur Twitch est requis.");
+            return new TwitchClipExecutionResultDto(false, "Le nom d'utilisateur Twitch est requis.");
         }
 
         var settings = configService.GetSettings();
         var channel = settings.Channels.FirstOrDefault(c => string.Equals(c.TwitchUsername, username.Trim(), StringComparison.OrdinalIgnoreCase));
         if (channel == null)
         {
-            return new TwitchClipExecutionResult(false, $"La chaîne '{username}' est introuvable dans la configuration.");
+            return new TwitchClipExecutionResultDto(false, $"La chaîne '{username}' est introuvable dans la configuration.");
         }
 
         if (string.IsNullOrWhiteSpace(channel.ClipDiscordChannelId))
         {
-            return new TwitchClipExecutionResult(false, $"Aucun salon Discord pour les clips n'est configuré pour la chaîne '{username}'.");
+            return new TwitchClipExecutionResultDto(false, $"Aucun salon Discord pour les clips n'est configuré pour la chaîne '{username}'.");
         }
 
         if (!ulong.TryParse(channel.ClipDiscordChannelId, out var discordChannelId))
         {
-            return new TwitchClipExecutionResult(false, $"L'identifiant de salon Discord '{channel.ClipDiscordChannelId}' est invalide.");
+            return new TwitchClipExecutionResultDto(false, $"L'identifiant de salon Discord '{channel.ClipDiscordChannelId}' est invalide.");
         }
 
         if (discordClient.GetChannel(discordChannelId) is not IMessageChannel messageChannel)
         {
-            return new TwitchClipExecutionResult(false, $"Salon Discord introuvable ou inaccessible ({discordChannelId}).");
+            return new TwitchClipExecutionResultDto(false, $"Salon Discord introuvable ou inaccessible ({discordChannelId}).");
         }
 
         var broadcasterId = await apiClient.GetUserIdAsync(channel.TwitchUsername, ct);
-        TwitchClipInfo? clip = null;
+        TwitchClipInfoDto? clip = null;
 
         if (!string.IsNullOrEmpty(broadcasterId))
         {
@@ -267,7 +266,7 @@ public class TwitchClipService(
             }
         }
 
-        clip ??= new TwitchClipInfo(
+        clip ??= new TwitchClipInfoDto(
             Id: "test_clip_preview",
             Url: $"https://clips.twitch.tv/TestClip-{channel.TwitchUsername}",
             EmbedUrl: $"https://clips.twitch.tv/embed?clip=TestClip-{channel.TwitchUsername}",
@@ -288,6 +287,6 @@ public class TwitchClipService(
         var embed = BuildClipEmbed(clip);
 
         await messageChannel.SendMessageAsync(text: text, embed: embed);
-        return new TwitchClipExecutionResult(true, $"Notification de test de clip envoyée avec succès dans le salon <#{discordChannelId}>.", 1);
+        return new TwitchClipExecutionResultDto(true, $"Notification de test de clip envoyée avec succès dans le salon <#{discordChannelId}>.", 1);
     }
 }

@@ -1,0 +1,9 @@
+root = true
+
+[*.cs]
+# Organiser et supprimer les usings inutiles
+dotnet_separate_import_directive_groups = false
+dotnet_sort_system_directives_first = true
+
+# Règle IDE0005 : Supprimer les directives using inutiles
+dotnet_diagnostic.IDE0005.severity = warning

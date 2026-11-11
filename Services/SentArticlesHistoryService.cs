@@ -1,6 +1,5 @@
 using System.IO.Abstractions;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace DiscordBot.Services;
 

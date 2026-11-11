@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using DiscordBot.Components.Pages;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Components;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class SecurityAuthorizationTests
+public class TU_SecurityAuthorizationTests
 {
     [Test]
     public void Dashboard_ShouldHave_AdminOnly_AuthorizeAttribute_And_DashboardRoute()

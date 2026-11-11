@@ -1,7 +1,6 @@
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using System.Text.Json;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -11,14 +10,14 @@ public class MorningBriefingConfigService(
 {
     private readonly object _lock = new();
     private readonly string _filePath = fileSystem.Path.Combine(AppContext.BaseDirectory, "data", "morning_briefing_settings.json");
-    private MorningBriefingSettings? _settings;
+    private MorningBriefingSettingsDto? _settings;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
     };
 
-    public MorningBriefingSettings GetSettings()
+    public MorningBriefingSettingsDto GetSettings()
     {
         lock (_lock)
         {
@@ -27,7 +26,7 @@ public class MorningBriefingConfigService(
         }
     }
 
-    public async Task SaveSettingsAsync(MorningBriefingSettings newSettings, CancellationToken cancellationToken = default)
+    public async Task SaveSettingsAsync(MorningBriefingSettingsDto newSettings, CancellationToken cancellationToken = default)
     {
         string json;
         lock (_lock)
@@ -46,14 +45,14 @@ public class MorningBriefingConfigService(
         logger.LogInformation("Paramètres du Morning Briefing enregistrés dans {Path}", _filePath);
     }
 
-    private MorningBriefingSettings LoadSettings()
+    private MorningBriefingSettingsDto LoadSettings()
     {
         try
         {
             if (fileSystem.File.Exists(_filePath))
             {
                 var json = fileSystem.File.ReadAllText(_filePath);
-                var loaded = JsonSerializer.Deserialize<MorningBriefingSettings>(json);
+                var loaded = JsonSerializer.Deserialize<MorningBriefingSettingsDto>(json);
                 if (loaded != null)
                 {
                     return loaded;
@@ -65,6 +64,6 @@ public class MorningBriefingConfigService(
             logger.LogError(ex, "Erreur lors du chargement des paramètres du Morning Briefing. Utilisation des valeurs par défaut.");
         }
 
-        return new MorningBriefingSettings();
+        return new MorningBriefingSettingsDto();
     }
 }

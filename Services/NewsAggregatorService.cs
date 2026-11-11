@@ -1,7 +1,6 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Xml.Linq;
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+using DiscordBot.DTO;
 
 namespace DiscordBot.Services;
 
@@ -10,10 +9,10 @@ public class NewsAggregatorService(
     SentArticlesHistoryService historyService,
     ILogger<NewsAggregatorService> logger)
 {
-    public async Task<List<NewsArticle>> FetchAllArticlesAsync(TechWatchSettings settings, bool filterDuplicates = true, CancellationToken cancellationToken = default)
+    public async Task<List<NewsArticleDto>> FetchAllArticlesAsync(TechWatchSettingsDto settings, bool filterDuplicates = true, CancellationToken cancellationToken = default)
     {
         EnsureUserAgent();
-        List<NewsArticle> articles = [];
+        List<NewsArticleDto> articles = [];
 
         // 1. Dev.to
         if (settings.EnableDevTo)
@@ -76,9 +75,9 @@ public class NewsAggregatorService(
         }
     }
 
-    private async Task<List<NewsArticle>> FetchDevToArticlesAsync(List<string> topics, CancellationToken cancellationToken)
+    private async Task<List<NewsArticleDto>> FetchDevToArticlesAsync(List<string> topics, CancellationToken cancellationToken)
     {
-        List<NewsArticle> result = [];
+        List<NewsArticleDto> result = [];
         var selectedTopics = topics.Take(8).ToList();
 
         foreach (var topic in selectedTopics)
@@ -105,7 +104,7 @@ public class NewsAggregatorService(
                         continue;
                     }
 
-                    result.Add(new NewsArticle
+                    result.Add(new NewsArticleDto
                     {
                         Title = title.Trim(),
                         Url = articleUrl.Trim(),
@@ -123,9 +122,9 @@ public class NewsAggregatorService(
         return result;
     }
 
-    private async Task<List<NewsArticle>> FetchHackerNewsArticlesAsync(List<string> topics, CancellationToken cancellationToken)
+    private async Task<List<NewsArticleDto>> FetchHackerNewsArticlesAsync(List<string> topics, CancellationToken cancellationToken)
     {
-        List<NewsArticle> result = [];
+        List<NewsArticleDto> result = [];
         var sampleTopics = topics.Where(t => t is "ai" or "llm" or "dotnet" or "csharp" or "security" or "architecture").Take(3);
 
         foreach (var topic in sampleTopics)
@@ -162,7 +161,7 @@ public class NewsAggregatorService(
                         continue;
                     }
 
-                    result.Add(new NewsArticle
+                    result.Add(new NewsArticleDto
                     {
                         Title = title.Trim(),
                         Url = articleUrl.Trim(),
@@ -180,9 +179,9 @@ public class NewsAggregatorService(
         return result;
     }
 
-    private async Task<List<NewsArticle>> FetchRssFeedAsync(string feedUrl, string sourceName, CancellationToken cancellationToken)
+    private async Task<List<NewsArticleDto>> FetchRssFeedAsync(string feedUrl, string sourceName, CancellationToken cancellationToken)
     {
-        List<NewsArticle> result = [];
+        List<NewsArticleDto> result = [];
         try
         {
             var content = await httpClient.GetStringAsync(feedUrl, cancellationToken);
@@ -200,7 +199,7 @@ public class NewsAggregatorService(
                     continue;
                 }
 
-                result.Add(new NewsArticle
+                result.Add(new NewsArticleDto
                 {
                     Title = title.Trim(),
                     Url = link.Trim(),
@@ -224,7 +223,7 @@ public class NewsAggregatorService(
                         continue;
                     }
 
-                    result.Add(new NewsArticle
+                    result.Add(new NewsArticleDto
                     {
                         Title = title.Trim(),
                         Url = link.Trim(),

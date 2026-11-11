@@ -1,5 +1,4 @@
-using DiscordBot.Models;
-using Microsoft.Extensions.Logging;
+﻿using DiscordBot.DTO;
 using TwitchLib.EventSub.Core.EventArgs.Stream;
 using TwitchLib.EventSub.Websockets;
 using TwitchLib.EventSub.Websockets.Core.EventArgs;
@@ -13,15 +12,15 @@ public class TwitchEventSubService(
     TwitchLiveService liveService,
     ILogger<TwitchEventSubService> logger) : IAsyncDisposable
 {
-    private TwitchEventSubStatus _status = TwitchEventSubStatus.Disconnected;
+    private TwitchEventSubStatusDto _status = TwitchEventSubStatusDto.Disconnected;
     private readonly SemaphoreSlim _subLock = new(1, 1);
     private bool _initialized;
     private bool _disposed;
 
     public event Action? OnStatusChanged;
 
-    public TwitchEventSubStatus Status => _status;
-    public bool IsConnected => _status == TwitchEventSubStatus.Connected;
+    public TwitchEventSubStatusDto Status => _status;
+    public bool IsConnected => _status == TwitchEventSubStatusDto.Connected;
     public string? SessionId => websocketClient.SessionId;
 
     public void Initialize()
@@ -45,7 +44,7 @@ public class TwitchEventSubService(
         if (string.IsNullOrWhiteSpace(settings.ClientId) || string.IsNullOrWhiteSpace(settings.ClientSecret))
         {
             logger.LogWarning("Les identifiants Twitch API (Client ID / Client Secret) ne sont pas configurés. WebSocket EventSub non démarré.");
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             NotifyStatusChanged();
             return false;
         }
@@ -53,7 +52,7 @@ public class TwitchEventSubService(
         if (!settings.IsEnabled)
         {
             logger.LogInformation("Les notifications Twitch sont désactivées. WebSocket EventSub non démarré.");
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             NotifyStatusChanged();
             return false;
         }
@@ -61,14 +60,14 @@ public class TwitchEventSubService(
         if (string.IsNullOrWhiteSpace(settings.UserAccessToken))
         {
             logger.LogInformation("Aucun User Access Token Twitch configuré. Le WebSocket EventSub requiert un jeton utilisateur. Mode polling automatique actif.");
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             NotifyStatusChanged();
             return false;
         }
 
         try
         {
-            _status = TwitchEventSubStatus.Connecting;
+            _status = TwitchEventSubStatusDto.Connecting;
             NotifyStatusChanged();
 
             logger.LogInformation("Connexion au WebSocket EventSub Twitch en cours...");
@@ -76,7 +75,7 @@ public class TwitchEventSubService(
             if (!connected)
             {
                 logger.LogError("Échec de l'établissement de la connexion WebSocket EventSub.");
-                _status = TwitchEventSubStatus.Error;
+                _status = TwitchEventSubStatusDto.Error;
                 NotifyStatusChanged();
                 return false;
             }
@@ -86,7 +85,7 @@ public class TwitchEventSubService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors du démarrage du client WebSocket EventSub.");
-            _status = TwitchEventSubStatus.Error;
+            _status = TwitchEventSubStatusDto.Error;
             NotifyStatusChanged();
             return false;
         }
@@ -97,14 +96,14 @@ public class TwitchEventSubService(
         try
         {
             var disconnected = await websocketClient.DisconnectAsync();
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             NotifyStatusChanged();
             return disconnected;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de la déconnexion du WebSocket EventSub.");
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             NotifyStatusChanged();
             return false;
         }
@@ -214,7 +213,7 @@ public class TwitchEventSubService(
     {
         try
         {
-            _status = TwitchEventSubStatus.Connected;
+            _status = TwitchEventSubStatusDto.Connected;
             logger.LogInformation("Connecté au WebSocket EventSub de Twitch. Reconnect: {IsRequestedReconnect}",
                 args.IsRequestedReconnect);
 
@@ -235,7 +234,7 @@ public class TwitchEventSubService(
     {
         try
         {
-            _status = TwitchEventSubStatus.Disconnected;
+            _status = TwitchEventSubStatusDto.Disconnected;
             logger.LogWarning("Déconnecté du WebSocket EventSub de Twitch.");
             NotifyStatusChanged();
         }
@@ -250,7 +249,7 @@ public class TwitchEventSubService(
     {
         try
         {
-            _status = TwitchEventSubStatus.Connected;
+            _status = TwitchEventSubStatusDto.Connected;
             logger.LogInformation("Reconnecté au WebSocket EventSub de Twitch.");
             NotifyStatusChanged();
         }
