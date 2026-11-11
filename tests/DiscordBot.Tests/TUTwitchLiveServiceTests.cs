@@ -15,7 +15,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_TwitchLiveServiceTests
+public class TUTwitchLiveServiceTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;

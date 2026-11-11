@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Components;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_SecurityAuthorizationTests
+public class TUSecurityAuthorizationTests
 {
     [Test]
     public void Dashboard_ShouldHave_AdminOnly_AuthorizeAttribute_And_DashboardRoute()

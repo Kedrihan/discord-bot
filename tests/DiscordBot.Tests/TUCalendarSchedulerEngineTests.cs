@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_CalendarSchedulerEngineTests
+public class TUCalendarSchedulerEngineTests
 {
     private FakeTimeProvider _timeProvider = null!;
     private readonly NullLogger<CalendarSchedulerEngine> _logger = NullLogger<CalendarSchedulerEngine>.Instance;

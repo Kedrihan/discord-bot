@@ -5,7 +5,7 @@ using FluentAssertions;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_MorningBriefingLogicTests
+public class TUMorningBriefingLogicTests
 {
     [TestCase(0, "Ciel dégagé", "☀️")]
     [TestCase(2, "Éclaircies", "⛅")]

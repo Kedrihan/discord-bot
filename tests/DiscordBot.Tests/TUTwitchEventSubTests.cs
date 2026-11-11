@@ -13,7 +13,7 @@ using TwitchLib.EventSub.Websockets;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_TwitchEventSubTests
+public class TUTwitchEventSubTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;

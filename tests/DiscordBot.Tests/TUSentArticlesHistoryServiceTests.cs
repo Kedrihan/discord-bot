@@ -7,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_SentArticlesHistoryServiceTests
+public class TUSentArticlesHistoryServiceTests
 {
     private MockFileSystem _fileSystem = null!;
     private FakeTimeProvider _timeProvider = null!;

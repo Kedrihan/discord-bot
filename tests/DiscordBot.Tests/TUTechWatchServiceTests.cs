@@ -4,7 +4,7 @@ using FluentAssertions;
 namespace DiscordBot.Tests;
 
 [TestFixture]
-public class TU_TechWatchServiceTests
+public class TUTechWatchServiceTests
 {
     [Test]
     public void ExtractUrls_ShouldExtractAllBracketedUrls()
