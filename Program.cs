@@ -130,7 +130,7 @@ builder.Services.AddDbContextFactory<BotDbContext>(options =>
 {
     options.UseSqlite(connectionString);
 });
-builder.Services.AddSingleton<DatabaseMigrationService>();
+builder.Services.AddSingleton<DatabaseInitializationService>();
 
 // Service d'état global du bot
 builder.Services.AddSingleton<BotSettingsService>();
@@ -189,11 +189,11 @@ builder.Services.AddHostedService<DiscordBotService>();
 
 var app = builder.Build();
 
-// Migration et initialisation de la base de données SQLite
+// Initialisation de la base de données SQLite
 using (var scope = app.Services.CreateScope())
 {
-    var migrationService = scope.ServiceProvider.GetRequiredService<DatabaseMigrationService>();
-    await migrationService.InitializeAndMigrateAsync();
+    var initService = scope.ServiceProvider.GetRequiredService<DatabaseInitializationService>();
+    await initService.InitializeAsync();
 }
 
 app.UseForwardedHeaders();
