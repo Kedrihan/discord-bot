@@ -90,8 +90,10 @@ These rules are strict and must be followed by all developers and AI agents work
 
 ---
 
-### 9. Unit Testing (NUnit Required)
+### 9. Unit Testing (NUnit Required & `TU` Prefix)
 * Use **NUnit** as the standard unit testing framework (paired with `FluentAssertions`).
+* **Mandatory `TU` Prefix:** All unit test files and test classes must systematically start with the prefix `TU` without underscore (e.g., `TUCalendarSchedulerEngineTests.cs`, `class TUCalendarSchedulerEngineTests`).
+* **Mirror Hierarchy:** The test directory `tests/DiscordBot.Tests/` must strictly mirror the project structure (`Features/`, `Core/`).
 * Write **unit tests** whenever non-trivial business logic is introduced:
   * Weather forecasting and commute slot computations.
   * Deduplication and history tracking.
@@ -100,7 +102,26 @@ These rules are strict and must be followed by all developers and AI agents work
 
 ---
 
-### 10. Multi-Agent Development Pipeline (`/forge`)
+### 10. Project Architecture & Hierarchy Standards
+All developers and agents must strictly follow the **Vertical Slices / Feature-Driven** architecture:
+* **`DTO/` (Dedicated CSPROJ):**
+  - All data transfer objects, request/response records, and configuration models must live in the `DTO` project.
+  - **1 file = 1 type:** Never declare multiple classes, enums, or records in the same file.
+  - Suffix each type name and file with `Dto` (e.g. `TechWatchSettingsDto.cs`).
+  - Organize into thematic sub-folders (`DTO/Common/`, `DTO/MorningBriefing/`, `DTO/TechWatch/`, `DTO/Twitch/`, etc.).
+* **`Features/` (Vertical Slices):**
+  - Place all feature-specific logic, services, jobs, external API clients, and state managers in dedicated feature folders (`Features/<FeatureName>/`).
+  - Do NOT create a monolithic flat `Services/` folder.
+* **`Core/` (Cross-Cutting Infrastructure):**
+  - Transverse, infrastructure-level components live in `Core/` (`Core/Discord/`, `Core/Scheduling/`, `Core/Settings/`).
+* **Timezone Standard:**
+  - Always convert scheduled calendar evaluations to the Paris timezone (`Europe/Paris` / `Romance Standard Time`).
+* **Clean Code & Usings:**
+  - Enforce `<EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>` and zero unused usings.
+
+---
+
+### 11. Multi-Agent Development Pipeline (`/forge`)
 * For new features, complex domain evolutions, or major refactorings, activate the `/forge` skill.
 * The `/forge` skill coordinates the 3-stage pipeline sequentially:
   1. **Scoping:** Interactive requirements analysis and edge-case resolution (Analyst subagent).
