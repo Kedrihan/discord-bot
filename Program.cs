@@ -25,8 +25,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownIPNetworks.Clear();
-    options.KnownProxies.Clear();
 });
 
 // Configuration de Blazor Server
@@ -39,7 +37,7 @@ builder.Services.AddHttpClient();
 // Configuration de l'authentification Discord OAuth2
 var clientId = builder.Configuration["DISCORD_CLIENT_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID");
 var clientSecret = builder.Configuration["DISCORD_CLIENT_SECRET"] ?? Environment.GetEnvironmentVariable("DISCORD_CLIENT_SECRET");
-var adminUserId = builder.Configuration["DISCORD_ADMIN_USER_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_ADMIN_USER_ID") ?? "116893981526196227";
+var adminUserId = builder.Configuration["DISCORD_ADMIN_USER_ID"] ?? Environment.GetEnvironmentVariable("DISCORD_ADMIN_USER_ID");
 
 var isOAuthConfigured = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 
@@ -112,6 +110,11 @@ builder.Services.AddAuthorization(options =>
             if (!isOAuthConfigured)
             {
                 return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(adminUserId))
+            {
+                return false;
             }
 
             var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

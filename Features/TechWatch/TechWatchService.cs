@@ -44,9 +44,14 @@ public class TechWatchService(
         // 2. Synthèse et formatage
         var formattedArticles = await geminiSummarizer.SummarizeAndFormatArticlesAsync(articles, settings);
 
-        // 3. Construction du message final Discord
+        // 3. Construction du message final Discord sécurisé
         var header = isManualTest ? "🧪 **[Test] Veille Dev Web & IA**" : "🖥️ **Veille Dev Web & IA**";
-        var finalMessage = $"{header}\n\n{formattedArticles}";
+        var rawMessage = $"{header}\n\n{formattedArticles}";
+        var finalMessage = TwitchLiveService.SanitizeUntrustedText(rawMessage);
+        if (finalMessage.Length > 2000)
+        {
+            finalMessage = finalMessage[..1997] + "...";
+        }
 
         // 4. Envoi sur Discord
         try
@@ -62,7 +67,7 @@ public class TechWatchService(
                 }
 
                 var dm = await user.CreateDMChannelAsync();
-                await dm.SendMessageAsync(finalMessage);
+                await dm.SendMessageAsync(finalMessage, allowedMentions: AllowedMentions.None);
             }
             else
             {
@@ -74,7 +79,7 @@ public class TechWatchService(
                     return new TechWatchExecutionResultDto(false, $"Impossible de trouver le salon Discord avec l'ID `{targetId}`.");
                 }
 
-                await channel.SendMessageAsync(finalMessage);
+                await channel.SendMessageAsync(finalMessage, allowedMentions: AllowedMentions.None);
             }
 
             // 5. Sauvegarde des URLs envoyées pour l'anti-doublon

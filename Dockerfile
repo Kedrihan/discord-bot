@@ -16,9 +16,14 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
 
+# Préparation du répertoire de données avec les permissions de l'utilisateur non-root
+RUN mkdir -p /app/data && chown -R $APP_UID:$APP_UID /app/data
+
 # Configuration du port d'écoute HTTP pour Blazor
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
+
+USER $APP_UID
 
 # Commande de démarrage
 ENTRYPOINT ["dotnet", "DiscordBot.dll"]
