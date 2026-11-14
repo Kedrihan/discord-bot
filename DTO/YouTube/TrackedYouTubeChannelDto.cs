@@ -2,6 +2,7 @@ namespace DiscordBot.DTO;
 
 public class TrackedYouTubeChannelDto
 {
+    public string GuildId { get; set; } = string.Empty;
     public string ChannelId { get; set; } = string.Empty;
     public string ChannelTitle { get; set; } = string.Empty;
     public string ChannelHandle { get; set; } = string.Empty;

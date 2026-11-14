@@ -171,15 +171,15 @@ public class TwitchClipService(
 
                 var clips = await apiClient.GetClipsAsync(broadcasterId, startedAt: startedAt, first: 20, ct: ct);
 
-                if (!historyService.IsBroadcasterInitialized(broadcasterId))
+                if (!historyService.IsBroadcasterInitialized(channel.GuildId, broadcasterId))
                 {
-                    await historyService.InitializeBroadcasterAsync(broadcasterId, clips.Select(c => c.Id), ct);
-                    logger.LogInformation("Broadcaster {Username} ({BroadcasterId}) initialisé pour les clips. {Count} clips existants ignorés.", cleanUsername, broadcasterId, clips.Count);
+                    await historyService.InitializeBroadcasterAsync(channel.GuildId, broadcasterId, clips.Select(c => c.Id), ct);
+                    logger.LogInformation("Broadcaster {Username} ({BroadcasterId}) initialisé pour les clips (Guild={GuildId}). {Count} clips existants ignorés.", cleanUsername, broadcasterId, channel.GuildId, clips.Count);
                     continue;
                 }
 
                 var newClips = clips
-                    .Where(c => !historyService.IsClipSeen(c.Id))
+                    .Where(c => !historyService.IsClipSeen(channel.GuildId, c.Id))
                     .OrderBy(c => c.CreatedAt)
                     .ToList();
 
@@ -205,10 +205,11 @@ public class TwitchClipService(
                         var embed = BuildClipEmbed(clip);
 
                         await messageChannel.SendMessageAsync(text: text, embed: embed);
-                        await historyService.MarkClipsAsSeenAsync([clip.Id], broadcasterId, ct);
+                        await historyService.MarkClipsAsSeenAsync(channel.GuildId, [clip.Id], broadcasterId, ct);
                         processedClipsCount++;
 
-                        logger.LogInformation("Notification de clip envoyée pour {Streamer}: {Title} (ID: {ClipId}, Salon: {ChannelId}).", clip.BroadcasterName, clip.Title, clip.Id, discordChannelId);
+                        logger.LogInformation("Notification de clip envoyée pour Guild={GuildId}, {Streamer}: {Title} (ID: {ClipId}, Salon: {ChannelId}).",
+                            channel.GuildId, clip.BroadcasterName, clip.Title, clip.Id, discordChannelId);
                     }
                     catch (Exception ex)
                     {
@@ -225,7 +226,7 @@ public class TwitchClipService(
         }
     }
 
-    public async Task<TwitchClipExecutionResultDto> TestClipNotificationAsync(string username, CancellationToken ct = default)
+    public async Task<TwitchClipExecutionResultDto> TestClipNotificationAsync(string username, string? guildId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(username))
         {
@@ -233,7 +234,9 @@ public class TwitchClipService(
         }
 
         var settings = configService.GetSettings();
-        var channel = settings.Channels.FirstOrDefault(c => string.Equals(c.TwitchUsername, username.Trim(), StringComparison.OrdinalIgnoreCase));
+        var channel = settings.Channels.FirstOrDefault(c =>
+            string.Equals(c.TwitchUsername, username.Trim(), StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrEmpty(guildId) || c.GuildId == guildId));
         if (channel == null)
         {
             return new TwitchClipExecutionResultDto(false, $"La chaîne '{username}' est introuvable dans la configuration.");

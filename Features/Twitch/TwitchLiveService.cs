@@ -154,69 +154,77 @@ public class TwitchLiveService(
             // 1. Détecter et notifier les streams nouvellement en direct
             foreach (var stream in onlineStreams)
             {
-                var channelConfig = activeChannels.FirstOrDefault(c => string.Equals(c.TwitchUsername, stream.UserLogin, StringComparison.OrdinalIgnoreCase));
-                if (channelConfig == null) continue;
+                var matchingConfigs = activeChannels
+                    .Where(c => string.Equals(c.TwitchUsername, stream.UserLogin, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
-                var existingState = stateService.GetActiveStream(stream.UserLogin);
-                if (existingState != null && existingState.StreamId == stream.StreamId)
-                {
-                    // Stream déjà en direct et notifié
-                    continue;
-                }
+                if (matchingConfigs.Count == 0) continue;
 
-                if (existingState != null && existingState.StreamId != stream.StreamId)
+                foreach (var channelConfig in matchingConfigs)
                 {
-                    // Si l'état existant provient du fallback EventSub (es_...) pour la même session de stream (< 5 min d'écart), réconcilier
-                    if (existingState.StreamId.StartsWith("es_") && Math.Abs((existingState.StartedAt - stream.StartedAt).TotalMinutes) < 5)
+                    var existingState = stateService.GetActiveStream(channelConfig.GuildId, stream.UserLogin);
+                    if (existingState != null && existingState.StreamId == stream.StreamId)
                     {
-                        existingState.StreamId = stream.StreamId;
-                        await stateService.SetActiveStreamAsync(existingState, ct);
+                        // Stream déjà en direct et notifié pour ce serveur
                         continue;
                     }
 
-                    // Redémarrage du stream sous un nouvel identifiant : nettoyer l'ancien message
-                    await TryDeleteDiscordMessageAsync(existingState.DiscordChannelId, existingState.DiscordMessageId);
-                }
-
-                if (!ulong.TryParse(channelConfig.DiscordChannelId, out var discordChannelId))
-                {
-                    logger.LogWarning("ID de salon Discord invalide pour la chaîne Twitch {Username}: {ChannelId}", stream.UserLogin, channelConfig.DiscordChannelId);
-                    continue;
-                }
-
-                if (discordClient.GetChannel(discordChannelId) is not IMessageChannel messageChannel)
-                {
-                    logger.LogWarning("Salon Discord introuvable ou inaccessible ({ChannelId}) pour la chaîne {Username}.", discordChannelId, stream.UserLogin);
-                    continue;
-                }
-
-                try
-                {
-                    var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
-                    var embed = BuildStreamEmbed(stream, avatarUrl);
-                    var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
-                    var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
-                    if (text.Length > 2000)
+                    if (existingState != null && existingState.StreamId != stream.StreamId)
                     {
-                        text = text[..1997] + "...";
+                        // Si l'état existant provient du fallback EventSub (es_...) pour la même session de stream (< 5 min d'écart), réconcilier
+                        if (existingState.StreamId.StartsWith("es_") && Math.Abs((existingState.StartedAt - stream.StartedAt).TotalMinutes) < 5)
+                        {
+                            existingState.StreamId = stream.StreamId;
+                            await stateService.SetActiveStreamAsync(existingState, ct);
+                            continue;
+                        }
+
+                        // Redémarrage du stream sous un nouvel identifiant : nettoyer l'ancien message
+                        await TryDeleteDiscordMessageAsync(existingState.DiscordChannelId, existingState.DiscordMessageId);
                     }
 
-                    var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
-
-                    await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
+                    if (!ulong.TryParse(channelConfig.DiscordChannelId, out var discordChannelId))
                     {
-                        TwitchUsername = stream.UserLogin,
-                        StreamId = stream.StreamId,
-                        DiscordChannelId = channelConfig.DiscordChannelId,
-                        DiscordMessageId = sentMessage.Id,
-                        StartedAt = stream.StartedAt
-                    }, ct);
+                        logger.LogWarning("ID de salon Discord invalide pour la chaîne Twitch {Username}: {ChannelId}", stream.UserLogin, channelConfig.DiscordChannelId);
+                        continue;
+                    }
 
-                    logger.LogInformation("Notification de stream envoyée pour {Streamer} (Salon: {ChannelId}, Message ID: {MessageId}).", stream.UserName, discordChannelId, sentMessage.Id);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Erreur lors de l'envoi de la notification de stream pour {Streamer}.", stream.UserName);
+                    if (discordClient.GetChannel(discordChannelId) is not IMessageChannel messageChannel)
+                    {
+                        logger.LogWarning("Salon Discord introuvable ou inaccessible ({ChannelId}) pour la chaîne {Username}.", discordChannelId, stream.UserLogin);
+                        continue;
+                    }
+
+                    try
+                    {
+                        var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
+                        var embed = BuildStreamEmbed(stream, avatarUrl);
+                        var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
+                        var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
+                        if (text.Length > 2000)
+                        {
+                            text = text[..1997] + "...";
+                        }
+
+                        var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
+
+                        await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
+                        {
+                            GuildId = channelConfig.GuildId,
+                            TwitchUsername = stream.UserLogin,
+                            StreamId = stream.StreamId,
+                            DiscordChannelId = channelConfig.DiscordChannelId,
+                            DiscordMessageId = sentMessage.Id,
+                            StartedAt = stream.StartedAt
+                        }, ct);
+
+                        logger.LogInformation("Notification de stream envoyée pour Guild={GuildId}, {Streamer} (Salon: {ChannelId}, Message ID: {MessageId}).",
+                            channelConfig.GuildId, stream.UserName, discordChannelId, sentMessage.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Erreur lors de l'envoi de la notification de stream pour Guild={GuildId}, {Streamer}.", channelConfig.GuildId, stream.UserName);
+                    }
                 }
             }
 
@@ -227,9 +235,9 @@ public class TwitchLiveService(
                 var isStillOnline = onlineStreams.Any(s => string.Equals(s.UserLogin, state.TwitchUsername, StringComparison.OrdinalIgnoreCase));
                 if (isStillOnline) continue;
 
-                logger.LogInformation("Le streamer {Username} n'est plus en direct. Suppression du message Discord...", state.TwitchUsername);
+                logger.LogInformation("Le streamer {Username} n'est plus en direct. Suppression du message Discord (Guild={GuildId})...", state.TwitchUsername, state.GuildId);
                 await TryDeleteDiscordMessageAsync(state.DiscordChannelId, state.DiscordMessageId);
-                await stateService.RemoveActiveStreamAsync(state.TwitchUsername, ct);
+                await stateService.RemoveActiveStreamAsync(state.GuildId, state.TwitchUsername, ct);
             }
 
             return new TwitchExecutionResultDto(true, "Vérification des streams Twitch terminée.");
@@ -257,10 +265,10 @@ public class TwitchLiveService(
                 return;
             }
 
-            var channelConfig = settings.Channels.FirstOrDefault(c =>
-                c.IsEnabled && string.Equals(c.TwitchUsername, broadcasterLogin, StringComparison.OrdinalIgnoreCase));
+            var matchingConfigs = settings.Channels.Where(c =>
+                c.IsEnabled && string.Equals(c.TwitchUsername, broadcasterLogin, StringComparison.OrdinalIgnoreCase)).ToList();
 
-            if (channelConfig == null)
+            if (matchingConfigs.Count == 0)
             {
                 logger.LogDebug("Notification ignorée pour {Streamer} : chaîne non suivie ou désactivée.", broadcasterLogin);
                 return;
@@ -308,62 +316,66 @@ public class TwitchLiveService(
                 };
             }
 
-            var existingState = stateService.GetActiveStream(broadcasterLogin);
-            if (existingState != null && (existingState.StreamId == stream.StreamId || Math.Abs((existingState.StartedAt - stream.StartedAt).TotalMinutes) < 5))
+            foreach (var channelConfig in matchingConfigs)
             {
-                // Stream déjà en direct et notifié
-                return;
-            }
-
-            if (existingState != null && existingState.StreamId != stream.StreamId)
-            {
-                await TryDeleteDiscordMessageAsync(existingState.DiscordChannelId, existingState.DiscordMessageId);
-            }
-
-            if (!ulong.TryParse(channelConfig.DiscordChannelId, out var discordChannelId))
-            {
-                logger.LogWarning("ID de salon Discord invalide pour la chaîne Twitch {Username}: {ChannelId}", broadcasterLogin, channelConfig.DiscordChannelId);
-                return;
-            }
-
-            if (discordClient.GetChannel(discordChannelId) is not IMessageChannel messageChannel)
-            {
-                logger.LogWarning("Salon Discord introuvable ou inaccessible ({ChannelId}) pour la chaîne {Username}.", discordChannelId, broadcasterLogin);
-                return;
-            }
-
-            try
-            {
-                var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
-                var embed = BuildStreamEmbed(stream, avatarUrl);
-                var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
-                var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
-                if (text.Length > 2000)
+                var existingState = stateService.GetActiveStream(channelConfig.GuildId, broadcasterLogin);
+                if (existingState != null && (existingState.StreamId == stream.StreamId || Math.Abs((existingState.StartedAt - stream.StartedAt).TotalMinutes) < 5))
                 {
-                    text = text[..1997] + "...";
+                    // Stream déjà en direct et notifié pour ce serveur
+                    continue;
                 }
 
-                var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
-
-                await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
+                if (existingState != null && existingState.StreamId != stream.StreamId)
                 {
-                    TwitchUsername = stream.UserLogin,
-                    StreamId = stream.StreamId,
-                    DiscordChannelId = channelConfig.DiscordChannelId,
-                    DiscordMessageId = sentMessage.Id,
-                    StartedAt = stream.StartedAt
-                }, ct);
+                    await TryDeleteDiscordMessageAsync(existingState.DiscordChannelId, existingState.DiscordMessageId);
+                }
 
-                _liveStreamsCache[stream.UserLogin] = stream;
-                NotifyLiveStatusChanged();
+                if (!ulong.TryParse(channelConfig.DiscordChannelId, out var discordChannelId))
+                {
+                    logger.LogWarning("ID de salon Discord invalide pour la chaîne Twitch {Username}: {ChannelId}", broadcasterLogin, channelConfig.DiscordChannelId);
+                    continue;
+                }
 
-                logger.LogInformation("Notification de stream envoyée (EventSub) pour {Streamer} (Salon: {ChannelId}, Message ID: {MessageId}).",
-                    stream.UserName, discordChannelId, sentMessage.Id);
+                if (discordClient.GetChannel(discordChannelId) is not IMessageChannel messageChannel)
+                {
+                    logger.LogWarning("Salon Discord introuvable ou inaccessible ({ChannelId}) pour la chaîne {Username}.", discordChannelId, broadcasterLogin);
+                    continue;
+                }
+
+                try
+                {
+                    var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
+                    var embed = BuildStreamEmbed(stream, avatarUrl);
+                    var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
+                    var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
+                    if (text.Length > 2000)
+                    {
+                        text = text[..1997] + "...";
+                    }
+
+                    var sentMessage = await messageChannel.SendMessageAsync(text: text, embed: embed);
+
+                    await stateService.SetActiveStreamAsync(new TwitchActiveStreamStateDto
+                    {
+                        GuildId = channelConfig.GuildId,
+                        TwitchUsername = stream.UserLogin,
+                        StreamId = stream.StreamId,
+                        DiscordChannelId = channelConfig.DiscordChannelId,
+                        DiscordMessageId = sentMessage.Id,
+                        StartedAt = stream.StartedAt
+                    }, ct);
+
+                    logger.LogInformation("Notification de stream envoyée (EventSub) pour Guild={GuildId}, {Streamer} (Salon: {ChannelId}, Message ID: {MessageId}).",
+                        channelConfig.GuildId, stream.UserName, discordChannelId, sentMessage.Id);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Erreur lors de l'envoi de la notification de stream pour {Streamer}.", stream.UserName);
+                }
             }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Erreur lors de l'envoi de la notification de stream pour {Streamer}.", stream.UserName);
-            }
+
+            _liveStreamsCache[stream.UserLogin] = stream;
+            NotifyLiveStatusChanged();
         }
         finally
         {
@@ -381,13 +393,13 @@ public class TwitchLiveService(
         await _checkLock.WaitAsync(ct);
         try
         {
-            logger.LogInformation("Le streamer {Username} n'est plus en direct (EventSub). Suppression du message Discord...", broadcasterLogin);
+            logger.LogInformation("Le streamer {Username} n'est plus en direct (EventSub). Suppression des messages Discord...", broadcasterLogin);
 
-            var existingState = stateService.GetActiveStream(broadcasterLogin);
-            if (existingState != null)
+            var existingStates = stateService.GetActiveStreams(broadcasterLogin);
+            foreach (var state in existingStates)
             {
-                await TryDeleteDiscordMessageAsync(existingState.DiscordChannelId, existingState.DiscordMessageId);
-                await stateService.RemoveActiveStreamAsync(broadcasterLogin, ct);
+                await TryDeleteDiscordMessageAsync(state.DiscordChannelId, state.DiscordMessageId);
+                await stateService.RemoveActiveStreamAsync(state.GuildId, broadcasterLogin, ct);
             }
 
             _liveStreamsCache.TryRemove(broadcasterLogin, out _);
@@ -399,7 +411,7 @@ public class TwitchLiveService(
         }
     }
 
-    public async Task<TwitchExecutionResultDto> TestNotificationAsync(string username, CancellationToken ct = default)
+    public async Task<TwitchExecutionResultDto> TestNotificationAsync(string username, string? guildId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(username))
         {
@@ -407,7 +419,9 @@ public class TwitchLiveService(
         }
 
         var settings = configService.GetSettings();
-        var channelConfig = settings.Channels.FirstOrDefault(c => string.Equals(c.TwitchUsername, username, StringComparison.OrdinalIgnoreCase));
+        var channelConfig = settings.Channels.FirstOrDefault(c =>
+            string.Equals(c.TwitchUsername, username, StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrEmpty(guildId) || c.GuildId == guildId));
         if (channelConfig == null)
         {
             return new TwitchExecutionResultDto(false, $"La chaîne Twitch '{username}' n'est pas dans la liste des chaînes suivies.");

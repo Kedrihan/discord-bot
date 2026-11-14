@@ -1,11 +1,19 @@
 @page "/dashboard"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminAccess")]
 @rendermode InteractiveServer
 @implements IDisposable
 @inject DiscordSocketClient DiscordClient
 @inject BotSettingsService SettingsService
 @inject TechWatchConfigService TechWatchConfig
 @inject MorningBriefingConfigService BriefingConfig
+@inject PermissionService PermissionService
+@inject AuthenticationStateProvider AuthStateProvider
+
+@{
+    var visibleGuilds = DiscordClient.Guilds
+        .Where(g => isSuperAdmin || authorizedGuildIds.Contains(g.Id.ToString()))
+        .ToList();
+}
 
 <div class="row g-4 mb-4">
     <!-- Statut de connexion -->
@@ -50,8 +58,8 @@
                 <span class="text-secondary small text-uppercase fw-semibold">Serveurs</span>
                 <i class="bi bi-hdd-network fs-4 text-info"></i>
             </div>
-            <h3 class="mb-0 fw-bold">@DiscordClient.Guilds.Count</h3>
-            <div class="small text-secondary mt-2">Guilds connectés</div>
+            <h3 class="mb-0 fw-bold">@visibleGuilds.Count</h3>
+            <div class="small text-secondary mt-2">@(isSuperAdmin ? "Guilds connectés" : "Serveurs autorisés")</div>
         </div>
     </div>
 
@@ -73,16 +81,16 @@
     <div class="col-lg-8">
         <div class="card p-4 shadow-sm">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-server me-2"></i>Serveurs connectés</h5>
+                <h5 class="mb-0 fw-bold"><i class="bi bi-server me-2"></i>Serveurs disponibles</h5>
                 <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshState">
                     <i class="bi bi-arrow-clockwise"></i> Rafraîchir
                 </button>
             </div>
 
-            @if (DiscordClient.Guilds.Count == 0)
+            @if (visibleGuilds.Count == 0)
             {
                 <div class="text-secondary py-3 text-center">
-                    <em>Aucun serveur connecté pour le moment (ou le bot n'est pas encore authentifié).</em>
+                    <em>Aucun serveur accessible pour votre compte.</em>
                 </div>
             }
             else
@@ -97,7 +105,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var guild in DiscordClient.Guilds)
+                            @foreach (var guild in visibleGuilds)
                             {
                                 <tr>
                                     <td><strong>@guild.Name</strong></td>
@@ -114,62 +122,65 @@
 
     <!-- Colonne latérale -->
     <div class="col-lg-4">
-        <!-- Veille Technologique Card -->
-        <div class="card p-4 shadow-sm mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-newspaper me-2 text-primary"></i>Veille Techno</h5>
-                @if (TechWatchConfig.GetSettings().IsEnabled)
-                {
-                    <span class="badge bg-success">Actif</span>
-                }
-                else
-                {
-                    <span class="badge bg-secondary">Désactivé</span>
-                }
+        @if (isSuperAdmin)
+        {
+            <!-- Veille Technologique Card -->
+            <div class="card p-4 shadow-sm mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0 fw-bold"><i class="bi bi-newspaper me-2 text-primary"></i>Veille Techno</h5>
+                    @if (TechWatchConfig.GetSettings().IsEnabled)
+                    {
+                        <span class="badge bg-success">Actif</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Désactivé</span>
+                    }
+                </div>
+                <p class="text-secondary small mb-3">
+                    Récapitulatif envoyé à <strong>@TechWatchConfig.GetSettings().ScheduleTime.ToString("HH:mm")</strong> 
+                    (@string.Join(", ", TechWatchConfig.GetSettings().ScheduleDays.Select(d => d.ToString().Substring(0, 3))))
+                </p>
+                <div class="d-flex flex-wrap gap-1 mb-3">
+                    @foreach (var topic in TechWatchConfig.GetSettings().Topics.Take(6))
+                    {
+                        <span class="badge bg-dark border border-secondary text-light small">#@topic</span>
+                    }
+                    @if (TechWatchConfig.GetSettings().Topics.Count > 6)
+                    {
+                        <span class="badge bg-dark border border-secondary text-secondary small">+@(TechWatchConfig.GetSettings().Topics.Count - 6)</span>
+                    }
+                </div>
+                <a href="/settings" class="btn btn-sm btn-outline-primary w-100">
+                    <i class="bi bi-gear me-1"></i> Gérer la veille
+                </a>
             </div>
-            <p class="text-secondary small mb-3">
-                Récapitulatif envoyé à <strong>@TechWatchConfig.GetSettings().ScheduleTime.ToString("HH:mm")</strong> 
-                (@string.Join(", ", TechWatchConfig.GetSettings().ScheduleDays.Select(d => d.ToString().Substring(0, 3))))
-            </p>
-            <div class="d-flex flex-wrap gap-1 mb-3">
-                @foreach (var topic in TechWatchConfig.GetSettings().Topics.Take(6))
-                {
-                    <span class="badge bg-dark border border-secondary text-light small">#@topic</span>
-                }
-                @if (TechWatchConfig.GetSettings().Topics.Count > 6)
-                {
-                    <span class="badge bg-dark border border-secondary text-secondary small">+@(TechWatchConfig.GetSettings().Topics.Count - 6)</span>
-                }
-            </div>
-            <a href="/settings" class="btn btn-sm btn-outline-primary w-100">
-                <i class="bi bi-gear me-1"></i> Gérer la veille
-            </a>
-        </div>
 
-        <!-- Briefing Matin Vélo Card -->
-        <div class="card p-4 shadow-sm mb-4">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h5 class="mb-0 fw-bold"><i class="bi bi-bicycle me-2 text-warning"></i>Briefing Matin</h5>
-                @if (BriefingConfig.GetSettings().IsEnabled)
-                {
-                    <span class="badge bg-success">Actif</span>
-                }
-                else
-                {
-                    <span class="badge bg-secondary">Désactivé</span>
-                }
+            <!-- Briefing Matin Vélo Card -->
+            <div class="card p-4 shadow-sm mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0 fw-bold"><i class="bi bi-bicycle me-2 text-warning"></i>Briefing Matin</h5>
+                    @if (BriefingConfig.GetSettings().IsEnabled)
+                    {
+                        <span class="badge bg-success">Actif</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Désactivé</span>
+                    }
+                </div>
+                <p class="text-secondary small mb-2">
+                    Verdict vélo envoyé à <strong>@BriefingConfig.GetSettings().ScheduleTime.ToString("HH:mm")</strong> 
+                    (@string.Join(", ", BriefingConfig.GetSettings().ScheduleDays.Select(d => d.ToString().Substring(0, 3))))
+                </p>
+                <div class="small text-muted mb-3 text-truncate" title="@BriefingConfig.GetSettings().Address">
+                    <i class="bi bi-geo-alt me-1"></i>@BriefingConfig.GetSettings().Address
+                </div>
+                <a href="/briefing" class="btn btn-sm btn-outline-warning w-100">
+                    <i class="bi bi-sliders me-1"></i> Gérer le briefing
+                </a>
             </div>
-            <p class="text-secondary small mb-2">
-                Verdict vélo envoyé à <strong>@BriefingConfig.GetSettings().ScheduleTime.ToString("HH:mm")</strong> 
-                (@string.Join(", ", BriefingConfig.GetSettings().ScheduleDays.Select(d => d.ToString().Substring(0, 3))))
-            </p>
-            <div class="small text-muted mb-3 text-truncate" title="@BriefingConfig.GetSettings().Address">
-                <i class="bi bi-geo-alt me-1"></i>@BriefingConfig.GetSettings().Address
-            </div>
-            <a href="/briefing" class="btn btn-sm btn-outline-warning w-100">
-                <i class="bi bi-sliders me-1"></i> Gérer le briefing
-            </a>
-        </div>
+        }
 
         <!-- Commandes disponibles -->
         <div class="card p-4 shadow-sm">
@@ -185,6 +196,16 @@
 
 @code {
     private Timer? _timer;
+    private bool isSuperAdmin = false;
+    private IReadOnlyList<string> authorizedGuildIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        isSuperAdmin = PermissionService.IsSuperAdmin(user);
+        authorizedGuildIds = PermissionService.GetAuthorizedGuildIds(user);
+    }
 
     protected override void OnInitialized()
     {

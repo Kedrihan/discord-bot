@@ -1,29 +1,52 @@
 @inherits LayoutComponentBase
+@inject PermissionService PermissionService
 
 <nav class="navbar navbar-expand-lg navbar-dark px-3 mb-4">
     <div class="container-fluid">
-        <AuthorizeView Policy="AdminOnly">
+        <AuthorizeView Policy="AdminAccess">
             <Authorized>
                 <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="/dashboard">
                     <i class="bi bi-discord text-primary fs-3"></i>
                     <span>DiscordBot Admin</span>
                 </a>
-                <div class="navbar-nav flex-row gap-3 me-auto ms-3 d-none d-md-flex">
+                <div class="navbar-nav flex-row gap-3 me-auto ms-3 d-none d-md-flex align-items-center">
                     <NavLink class="nav-link" href="/dashboard" Match="NavLinkMatch.All">
                         <i class="bi bi-speedometer2 me-1"></i> Dashboard
                     </NavLink>
-                    <NavLink class="nav-link" href="/briefing">
-                        <i class="bi bi-bicycle me-1"></i> Briefing Matin
-                    </NavLink>
-                    <NavLink class="nav-link" href="/settings">
-                        <i class="bi bi-gear me-1"></i> Veille Techno
-                    </NavLink>
-                    <NavLink class="nav-link" href="/twitch">
-                        <i class="bi bi-twitch me-1"></i> Twitch Live
-                    </NavLink>
-                    <NavLink class="nav-link" href="/youtube">
-                        <i class="bi bi-youtube me-1" style="color: #FF0000;"></i> YouTube
-                    </NavLink>
+
+                    <AuthorizeView Policy="SuperAdminOnly">
+                        <Authorized Context="superAdminContext">
+                            <NavLink class="nav-link" href="/briefing">
+                                <i class="bi bi-bicycle me-1"></i> Briefing Matin
+                            </NavLink>
+                            <NavLink class="nav-link" href="/settings">
+                                <i class="bi bi-gear me-1"></i> Veille Techno
+                            </NavLink>
+                            <NavLink class="nav-link" href="/permissions">
+                                <i class="bi bi-shield-lock me-1 text-warning"></i> Permissions
+                            </NavLink>
+                        </Authorized>
+                    </AuthorizeView>
+
+                    @{
+                        var isSuper = PermissionService.IsSuperAdmin(context.User);
+                        var hasTwitch = isSuper || PermissionService.GetAuthorizedGuildIds(context.User, GuildFeatureFlagsDto.Twitch).Count > 0;
+                        var hasYouTube = isSuper || PermissionService.GetAuthorizedGuildIds(context.User, GuildFeatureFlagsDto.YouTube).Count > 0;
+                    }
+
+                    @if (hasTwitch)
+                    {
+                        <NavLink class="nav-link" href="/twitch">
+                            <i class="bi bi-twitch me-1" style="color: #9146FF;"></i> Twitch Live
+                        </NavLink>
+                    }
+
+                    @if (hasYouTube)
+                    {
+                        <NavLink class="nav-link" href="/youtube">
+                            <i class="bi bi-youtube me-1" style="color: #FF0000;"></i> YouTube
+                        </NavLink>
+                    }
                 </div>
             </Authorized>
             <NotAuthorized>

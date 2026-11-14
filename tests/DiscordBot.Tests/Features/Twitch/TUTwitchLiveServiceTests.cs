@@ -188,7 +188,7 @@ public class TUTwitchLiveServiceTests
     }
 
     [Test]
-    public void TwitchPage_ShouldHave_AdminOnly_AuthorizeAttribute_And_TwitchRoute()
+    public void TwitchPage_ShouldHave_AdminAccess_AuthorizeAttribute_And_TwitchRoute()
     {
         var type = typeof(TwitchPage);
 
@@ -198,7 +198,7 @@ public class TUTwitchLiveServiceTests
 
         var authAttrs = type.GetCustomAttributes<AuthorizeAttribute>().ToList();
         authAttrs.Should().NotBeEmpty();
-        authAttrs.Should().Contain(a => a.Policy == "AdminOnly");
+        authAttrs.Should().Contain(a => a.Policy == "AdminAccess");
     }
 
     [Test]

@@ -18,6 +18,7 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
     public DbSet<TrackedYouTubeChannelEntity> TrackedYouTubeChannels => Set<TrackedYouTubeChannelEntity>();
     public DbSet<YouTubeVideoHistoryEntity> YouTubeVideoHistory => Set<YouTubeVideoHistoryEntity>();
     public DbSet<YouTubeInitializedChannelEntity> YouTubeInitializedChannels => Set<YouTubeInitializedChannelEntity>();
+    public DbSet<GuildAdminPermissionEntity> GuildAdminPermissions => Set<GuildAdminPermissionEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,7 +65,7 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         modelBuilder.Entity<TrackedTwitchChannelEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.TwitchUsername);
+            entity.HasIndex(e => new { e.GuildId, e.TwitchUsername });
         });
 
         // SentArticles
@@ -81,8 +82,8 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         // TwitchClips
         modelBuilder.Entity<TwitchClipHistoryEntity>(entity =>
         {
-            entity.HasKey(e => e.ClipId);
-            entity.HasIndex(e => e.BroadcasterId);
+            entity.HasKey(e => new { e.GuildId, e.ClipId });
+            entity.HasIndex(e => new { e.GuildId, e.BroadcasterId });
             entity.HasIndex(e => e.DiscoveredAt);
             entity.Property(e => e.DiscoveredAt)
                 .HasConversion(
@@ -93,7 +94,7 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         // TwitchInitializedBroadcasters
         modelBuilder.Entity<TwitchInitializedBroadcasterEntity>(entity =>
         {
-            entity.HasKey(e => e.BroadcasterId);
+            entity.HasKey(e => new { e.GuildId, e.BroadcasterId });
             entity.Property(e => e.InitializedAt)
                 .HasConversion(
                     v => v.ToUnixTimeMilliseconds(),
@@ -103,7 +104,7 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         // TwitchActiveStreams
         modelBuilder.Entity<TwitchActiveStreamEntity>(entity =>
         {
-            entity.HasKey(e => e.TwitchUsername);
+            entity.HasKey(e => new { e.GuildId, e.TwitchUsername });
             entity.Property(e => e.StartedAt)
                 .HasConversion(
                     v => v.ToUnixTimeMilliseconds(),
@@ -123,14 +124,14 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         modelBuilder.Entity<TrackedYouTubeChannelEntity>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.ChannelId);
+            entity.HasIndex(e => new { e.GuildId, e.ChannelId });
         });
 
         // YouTubeVideoHistory
         modelBuilder.Entity<YouTubeVideoHistoryEntity>(entity =>
         {
-            entity.HasKey(e => e.VideoId);
-            entity.HasIndex(e => e.ChannelId);
+            entity.HasKey(e => new { e.GuildId, e.VideoId });
+            entity.HasIndex(e => new { e.GuildId, e.ChannelId });
             entity.HasIndex(e => e.DiscoveredAt);
             entity.Property(e => e.DiscoveredAt)
                 .HasConversion(
@@ -141,8 +142,19 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         // YouTubeInitializedChannels
         modelBuilder.Entity<YouTubeInitializedChannelEntity>(entity =>
         {
-            entity.HasKey(e => e.ChannelId);
+            entity.HasKey(e => new { e.GuildId, e.ChannelId });
             entity.Property(e => e.InitializedAt)
+                .HasConversion(
+                    v => v.ToUnixTimeMilliseconds(),
+                    v => DateTimeOffset.FromUnixTimeMilliseconds(v));
+        });
+
+        // GuildAdminPermissions
+        modelBuilder.Entity<GuildAdminPermissionEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.GuildId, e.UserId }).IsUnique();
+            entity.Property(e => e.CreatedAt)
                 .HasConversion(
                     v => v.ToUnixTimeMilliseconds(),
                     v => DateTimeOffset.FromUnixTimeMilliseconds(v));

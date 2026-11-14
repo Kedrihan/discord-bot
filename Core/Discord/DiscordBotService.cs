@@ -2,6 +2,7 @@ using System.Reflection;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using DiscordBot.Core.Database.Services;
 
 namespace DiscordBot.Services;
 
@@ -59,6 +60,17 @@ public class DiscordBotService(
     private async Task OnReadyAsync()
     {
         logger.LogInformation("Connecté en tant que {CurrentUser} !", client.CurrentUser);
+
+        try
+        {
+            using var scope = serviceProvider.CreateScope();
+            var initService = scope.ServiceProvider.GetRequiredService<DatabaseInitializationService>();
+            await initService.BackfillGuildIdsAsync(client);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Erreur lors du backfill des GuildId au démarrage du bot.");
+        }
 
         // Découverte et chargement des modules de commandes
         await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);

@@ -10,7 +10,7 @@ namespace DiscordBot.Tests.Features.YouTube;
 public class TUYouTubePageTests
 {
     [Test]
-    public void YouTubePage_ShouldHave_AdminOnly_AuthorizeAttribute_And_YouTubeRoute()
+    public void YouTubePage_ShouldHave_AdminAccess_AuthorizeAttribute_And_YouTubeRoute()
     {
         var type = typeof(YouTubePage);
 
@@ -20,6 +20,6 @@ public class TUYouTubePageTests
 
         var authAttrs = type.GetCustomAttributes<AuthorizeAttribute>().ToList();
         authAttrs.Should().NotBeEmpty();
-        authAttrs.Should().Contain(a => a.Policy == "AdminOnly");
+        authAttrs.Should().Contain(a => a.Policy == "AdminAccess");
     }
 }

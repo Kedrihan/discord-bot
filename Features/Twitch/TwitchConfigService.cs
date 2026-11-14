@@ -74,6 +74,7 @@ public class TwitchConfigService(
         entity.Channels = newSettings.Channels.Select(c => new TrackedTwitchChannelEntity
         {
             TwitchSettingsId = 1,
+            GuildId = c.GuildId?.Trim() ?? string.Empty,
             TwitchUsername = c.TwitchUsername.Trim(),
             DiscordChannelId = c.DiscordChannelId.Trim(),
             CustomMessage = c.CustomMessage,
@@ -123,6 +124,7 @@ public class TwitchConfigService(
         ClipCheckIntervalSeconds = entity.ClipCheckIntervalSeconds,
         Channels = entity.Channels.Select(c => new TrackedTwitchChannelDto
         {
+            GuildId = c.GuildId,
             TwitchUsername = c.TwitchUsername,
             DiscordChannelId = c.DiscordChannelId,
             CustomMessage = c.CustomMessage,

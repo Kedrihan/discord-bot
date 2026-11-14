@@ -7,12 +7,14 @@ using Discord.WebSocket;
 using DiscordBot.Components;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Services;
+using DiscordBot.Core.Permissions;
 using DiscordBot.Features.YouTube;
 using DiscordBot.Services;
 using dotenv.net;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using TwitchLib.EventSub.Websockets.Extensions;
@@ -101,26 +103,36 @@ if (isOAuthConfigured)
     });
 }
 
+
+// Configuration du client Discord
+builder.Services.AddSingleton(new DiscordSocketConfig
+{
+    GatewayIntents = GatewayIntents.Guilds,
+    LogGatewayIntentWarnings = false,
+    AlwaysDownloadUsers = false
+});
+
+builder.Services.AddSingleton<DiscordSocketClient>();
+
 builder.Services.AddAuthorization(options =>
 {
+    options.AddPolicy("SuperAdminOnly", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.Requirements.Add(new SuperAdminRequirement());
+    });
+
+    options.AddPolicy("AdminAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.Requirements.Add(new AdminAccessRequirement());
+    });
+
+    // Rétrocompatibilité
     options.AddPolicy("AdminOnly", policy =>
     {
         policy.RequireAuthenticatedUser();
-        policy.RequireAssertion(context =>
-        {
-            if (!isOAuthConfigured)
-            {
-                return true;
-            }
-
-            if (string.IsNullOrWhiteSpace(adminUserId))
-            {
-                return false;
-            }
-
-            var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            return !string.IsNullOrEmpty(userId) && userId == adminUserId;
-        });
+        policy.Requirements.Add(new SuperAdminRequirement());
     });
 });
 
@@ -135,6 +147,11 @@ builder.Services.AddDbContextFactory<BotDbContext>(options =>
     options.UseSqlite(connectionString);
 });
 builder.Services.AddSingleton<DatabaseInitializationService>();
+
+// Service de permissions RBAC et politiques d'autorisation
+builder.Services.AddSingleton<PermissionService>();
+builder.Services.AddSingleton<IAuthorizationHandler, SuperAdminHandler>();
+builder.Services.AddSingleton<IAuthorizationHandler, AdminAccessHandler>();
 
 // Service d'état global du bot
 builder.Services.AddSingleton<BotSettingsService>();
@@ -175,15 +192,6 @@ builder.Services.AddSingleton<YouTubeHistoryService>();
 builder.Services.AddSingleton<YouTubeNotificationService>();
 builder.Services.AddHostedService<YouTubeScheduler>();
 
-// Configuration du client Discord
-builder.Services.AddSingleton(new DiscordSocketConfig
-{
-    GatewayIntents = GatewayIntents.Guilds,
-    LogGatewayIntentWarnings = false,
-    AlwaysDownloadUsers = false
-});
-
-builder.Services.AddSingleton<DiscordSocketClient>();
 
 // Configuration du gestionnaire d'interactions (Slash Commands)
 builder.Services.AddSingleton(provider => new InteractionService(

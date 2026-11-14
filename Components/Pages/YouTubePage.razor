@@ -1,10 +1,12 @@
 @page "/youtube"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminAccess")]
 @rendermode InteractiveServer
 @inject YouTubeConfigService ConfigService
 @inject YouTubeNotificationService NotificationService
 @inject YouTubeFeedClient FeedClient
 @inject DiscordSocketClient DiscordClient
+@inject PermissionService PermissionService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <div class="container py-2" style="max-width: 1000px;">
     <!-- En-tête -->
@@ -15,9 +17,12 @@
             </h3>
             <p class="text-secondary mb-0">Alertes Discord automatiques lors de la publication de nouvelles vidéos ou Shorts via flux officiel YouTube Atom.</p>
         </div>
-        <div class="form-check form-switch fs-4">
-            <input class="form-check-input" type="checkbox" id="enableSwitch" checked="@settings.IsEnabled" @onchange="ToggleGlobalEnabledAsync">
-        </div>
+        @if (isSuperAdmin)
+        {
+            <div class="form-check form-switch fs-4">
+                <input class="form-check-input" type="checkbox" id="enableSwitch" checked="@settings.IsEnabled" @onchange="ToggleGlobalEnabledAsync">
+            </div>
+        }
     </div>
 
     <!-- Alertes de feedback -->
@@ -30,216 +35,105 @@
         </div>
     }
 
-    <div class="row g-4 mb-4">
-        <!-- 1. Paramètres de détection -->
-        <div class="col-lg-6">
-            <div class="card p-4 h-100 shadow-sm border-secondary">
-                <h5 class="fw-bold mb-3">
-                    <i class="bi bi-gear-fill me-2 text-danger" style="color: #FF0000 !important;"></i>Configuration du Service
-                </h5>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary d-block">Source de détection</label>
-                    <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
-                        <i class="bi bi-rss me-1"></i> Flux Atom officiel YouTube (Sans clé API, sans quota)
-                    </span>
-                    <div class="form-text text-secondary small mt-1">
-                        Utilise les flux RSS officiels <code>https://www.youtube.com/feeds/videos.xml?channel_id=...</code>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label small fw-semibold text-secondary">Intervalle de vérification (minutes)</label>
-                    <input type="number" min="1" max="1440" class="form-control bg-dark text-light border-secondary font-monospace"
-                           placeholder="15"
-                           @bind="settings.CheckIntervalMinutes" />
-                    <div class="form-text text-secondary small">
-                        Intervalle entre chaque scan des chaînes (entre 1 min et 1440 min, défaut : 15 min).
-                    </div>
-                </div>
-
-                <div class="mb-0">
-                    <label class="form-label small fw-semibold text-secondary">Protection Cold-Start</label>
-                    <div class="p-3 rounded bg-dark border border-secondary small text-secondary">
-                        <i class="bi bi-shield-check text-info me-1"></i> Lors de l'ajout d'une nouvelle chaîne, ses vidéos actuelles sont automatiquement marquées comme déjà vues sans spammer Discord.
-                    </div>
-                </div>
+    @if (!isSuperAdmin && authorizedGuildIds.Count == 0)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
+            <i class="bi bi-shield-x fs-4"></i>
+            <div>
+                <strong>Accès refusé :</strong> Vous n'avez pas les autorisations nécessaires pour gérer YouTube sur aucun serveur Discord.
             </div>
         </div>
-
-        <!-- 2. Statut & Actions -->
-        <div class="col-lg-6">
-            <div class="card p-4 h-100 shadow-sm border-secondary d-flex flex-column justify-content-between">
-                <div>
-                    <h5 class="fw-bold mb-3">
-                        <i class="bi bi-broadcast-pin me-2 text-info"></i>Statut &amp; Actions
-                    </h5>
-
-                    <ul class="list-group list-group-flush bg-transparent mb-3">
-                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
-                            <span>Statut de détection :</span>
-                            <span class="badge @(settings.IsEnabled ? "bg-success" : "bg-secondary")">
-                                @(settings.IsEnabled ? $"Actif (toutes les {settings.CheckIntervalMinutes} min)" : "Désactivé")
-                            </span>
-                        </li>
-                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
-                            <span>Statut du bot Discord :</span>
-                            <span class="badge @(DiscordClient.ConnectionState == Discord.ConnectionState.Connected ? "bg-success" : "bg-warning")">
-                                @DiscordClient.ConnectionState
-                            </span>
-                        </li>
-                        <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
-                            <span>Chaînes YouTube surveillées :</span>
-                            <span class="fw-bold">@settings.Channels.Count</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <div class="d-flex flex-column gap-2 mt-3">
-                    <button class="btn btn-danger d-flex align-items-center justify-content-center gap-2"
-                            style="background-color: #CC0000; border-color: #CC0000;"
-                            @onclick="SaveSettingsAsync">
-                        <i class="bi bi-floppy"></i>
-                        Enregistrer la configuration
-                    </button>
-
-                    <button class="btn btn-outline-info d-flex align-items-center justify-content-center gap-2"
-                            disabled="@isChecking"
-                            @onclick="CheckNowAsync">
-                        @if (isChecking)
-                        {
-                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                            <span>Vérification des vidéos...</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-arrow-repeat"></i>
-                            <span>Vérifier les vidéos maintenant</span>
-                        }
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 3. Gestion des chaînes suivies -->
-    <div class="card p-4 shadow-sm border-secondary mb-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="fw-bold mb-0">
-                <i class="bi bi-play-btn-fill me-2" style="color: #FF0000;"></i>Chaînes YouTube surveillées
-            </h5>
-            @if (!isAddingChannel && editingChannel == null)
-            {
-                <button class="btn btn-sm btn-outline-danger" @onclick="StartAddChannel">
-                    <i class="bi bi-plus-lg me-1"></i>Ajouter une chaîne
-                </button>
-            }
-        </div>
-
-        <!-- Formulaire Ajout / Édition -->
-        @if (isAddingChannel || editingChannel != null)
+    }
+    else
+    {
+        @if (isSuperAdmin)
         {
-            <div class="card p-3 mb-4 bg-dark border-danger">
-                <h6 class="fw-bold mb-3 text-info">
-                    <i class="bi @(editingChannel != null ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
-                    @(editingChannel != null ? "Modifier la chaîne" : "Nouvelle chaîne YouTube à surveiller")
-                </h6>
+            <div class="row g-4 mb-4">
+                <!-- 1. Paramètres de détection -->
+                <div class="col-lg-6">
+                    <div class="card p-4 h-100 shadow-sm border-secondary">
+                        <h5 class="fw-bold mb-3">
+                            <i class="bi bi-gear-fill me-2 text-danger" style="color: #FF0000 !important;"></i>Configuration du Service
+                        </h5>
 
-                <div class="row g-3">
-                    <!-- Entrée Handle / URL / ID -->
-                    <div class="col-md-7">
-                        <label class="form-label small fw-semibold text-secondary">Identifiant, @@handle ou URL de la chaîne</label>
-                        <div class="input-group">
-                            <input type="text" class="form-control bg-dark text-light border-secondary"
-                                   placeholder="@@handle, https://youtube.com/@@nom ou UC..."
-                                   @bind="formInput" />
-                            <button class="btn btn-outline-primary" type="button" disabled="@isResolving" @onclick="ResolveInputAsync">
-                                @if (isResolving)
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary d-block">Source de détection</label>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                                <i class="bi bi-rss me-1"></i> Flux Atom officiel YouTube (Sans clé API, sans quota)
+                            </span>
+                            <div class="form-text text-secondary small mt-1">
+                                Utilise les flux RSS officiels <code>https://www.youtube.com/feeds/videos.xml?channel_id=...</code>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold text-secondary">Intervalle de vérification (minutes)</label>
+                            <input type="number" min="1" max="1440" class="form-control bg-dark text-light border-secondary font-monospace"
+                                   placeholder="15"
+                                   @bind="settings.CheckIntervalMinutes" />
+                            <div class="form-text text-secondary small">
+                                Intervalle entre chaque scan des chaînes (entre 1 min et 1440 min, défaut : 15 min).
+                            </div>
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label small fw-semibold text-secondary">Protection Cold-Start</label>
+                            <div class="p-3 rounded bg-dark border border-secondary small text-secondary">
+                                <i class="bi bi-shield-check text-info me-1"></i> Lors de l'ajout d'une nouvelle chaîne, ses vidéos actuelles sont automatiquement marquées comme déjà vues sans spammer Discord.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Statut & Actions -->
+                <div class="col-lg-6">
+                    <div class="card p-4 h-100 shadow-sm border-secondary d-flex flex-column justify-content-between">
+                        <div>
+                            <h5 class="fw-bold mb-3">
+                                <i class="bi bi-broadcast-pin me-2 text-info"></i>Statut &amp; Actions
+                            </h5>
+
+                            <ul class="list-group list-group-flush bg-transparent mb-3">
+                                <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                                    <span>Statut de détection :</span>
+                                    <span class="badge @(settings.IsEnabled ? "bg-success" : "bg-secondary")">
+                                        @(settings.IsEnabled ? $"Actif (toutes les {settings.CheckIntervalMinutes} min)" : "Désactivé")
+                                    </span>
+                                </li>
+                                <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                                    <span>Statut du bot Discord :</span>
+                                    <span class="badge @(DiscordClient.ConnectionState == Discord.ConnectionState.Connected ? "bg-success" : "bg-warning")">
+                                        @DiscordClient.ConnectionState
+                                    </span>
+                                </li>
+                                <li class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center px-0">
+                                    <span>Chaînes YouTube surveillées :</span>
+                                    <span class="fw-bold">@settings.Channels.Count</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="d-flex flex-column gap-2 mt-3">
+                            <button class="btn btn-danger d-flex align-items-center justify-content-center gap-2"
+                                    style="background-color: #CC0000; border-color: #CC0000;"
+                                    @onclick="SaveSettingsAsync">
+                                <i class="bi bi-floppy"></i>
+                                Enregistrer la configuration
+                            </button>
+
+                            <button class="btn btn-outline-info d-flex align-items-center justify-content-center gap-2"
+                                    disabled="@isChecking"
+                                    @onclick="CheckNowAsync">
+                                @if (isChecking)
                                 {
-                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    <span>Vérification des vidéos...</span>
                                 }
                                 else
                                 {
-                                    <i class="bi bi-search me-1"></i>
-                                    <span>Résoudre</span>
+                                    <i class="bi bi-arrow-repeat"></i>
+                                    <span>Vérifier les vidéos maintenant</span>
                                 }
-                            </button>
-                        </div>
-                        <div class="form-text text-secondary small">
-                            Entrez le @@handle (ex: <code>@@Underscore_</code>), l'URL complète ou l'ID canonique <code>UC...</code>.
-                        </div>
-                    </div>
-
-                    <!-- Salon Discord -->
-                    <div class="col-md-5">
-                        <label class="form-label small fw-semibold text-secondary">Salon Discord cible (ID)</label>
-                        <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
-                               placeholder="ex: 123456789012345678"
-                               @bind="formDiscordChannelId" />
-                        <div class="form-text text-secondary small">
-                            @{
-                                var chIdNum = ulong.TryParse(formDiscordChannelId, out var parsedChId) ? parsedChId : 0;
-                                var discordChName = chIdNum != 0 ? (DiscordClient.GetChannel(chIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
-                            }
-                            @if (discordChName != null)
-                            {
-                                <span class="text-success"><i class="bi bi-check-circle"></i> Salon détecté : #@discordChName</span>
-                            }
-                            else
-                            {
-                                <span>ID numérique du salon Discord où envoyer les vidéos.</span>
-                            }
-                        </div>
-                    </div>
-
-                    <!-- Résultat de la résolution -->
-                    @if (!string.IsNullOrWhiteSpace(formChannelId))
-                    {
-                        <div class="col-12">
-                            <div class="p-2 rounded bg-black border border-secondary small d-flex flex-wrap align-items-center gap-3">
-                                <div><span class="text-secondary">Nom :</span> <strong class="text-light">@formChannelTitle</strong></div>
-                                <div><span class="text-secondary">ID Canonique :</span> <code class="text-warning">@formChannelId</code></div>
-                                @if (!string.IsNullOrWhiteSpace(formChannelHandle))
-                                {
-                                    <div><span class="text-secondary">Handle :</span> <span class="text-info">@formChannelHandle</span></div>
-                                }
-                            </div>
-                        </div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(resolutionMessage))
-                    {
-                        <div class="col-12">
-                            <div class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>@resolutionMessage</div>
-                        </div>
-                    }
-
-                    <!-- Template de message -->
-                    <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label small fw-semibold text-secondary mb-0">Message personnalisé</label>
-                            <div class="small">
-                                <span class="text-secondary me-1">Variables :</span>
-                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{channel}")'>{channel}</button>
-                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{title}")'>{title}</button>
-                                <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{type}")'>{type}</button>
-                                <button type="button" class="badge bg-secondary border-0" @onclick='() => AppendVariable("{url}")'>{url}</button>
-                            </div>
-                        </div>
-                        <textarea class="form-control bg-dark text-light border-secondary" rows="2"
-                                  @bind="formCustomMessage"></textarea>
-                    </div>
-
-                    <!-- Statut actif et boutons -->
-                    <div class="col-12 d-flex justify-content-between align-items-center">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="channelEnableSwitch" @bind="formIsEnabled">
-                            <label class="form-check-label small" for="channelEnableSwitch">Activer les notifications pour cette chaîne</label>
-                        </div>
-
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelForm">Annuler</button>
-                            <button class="btn btn-sm btn-danger" style="background-color: #CC0000; border-color: #CC0000;" @onclick="SaveChannelFormAsync">
-                                Enregistrer la chaîne
                             </button>
                         </div>
                     </div>
@@ -247,109 +141,271 @@
             </div>
         }
 
-        <!-- Liste des chaînes -->
-        @if (settings.Channels.Count == 0)
-        {
-            <div class="text-center py-4 text-secondary">
-                <i class="bi bi-youtube fs-2 d-block mb-2" style="color: #666;"></i>
-                <p class="mb-0">Aucune chaîne YouTube enregistrée pour le moment. Cliquez sur "Ajouter une chaîne" pour commencer.</p>
+        <!-- 3. Gestion des chaînes suivies -->
+        <div class="card p-4 shadow-sm border-secondary mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0">
+                    <i class="bi bi-collection-play-fill me-2" style="color: #FF0000;"></i>Chaînes YouTube surveillées
+                </h5>
+                @if (!isAddingChannel && editingChannel == null)
+                {
+                    <button class="btn btn-sm btn-outline-danger" @onclick="StartAddChannel">
+                        <i class="bi bi-plus-lg me-1"></i>Ajouter une chaîne
+                    </button>
+                }
             </div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table table-dark table-hover align-middle mb-0">
-                    <thead>
-                        <tr class="text-secondary small">
-                            <th>Statut</th>
-                            <th>Chaîne YouTube</th>
-                            <th>ID Canonique</th>
-                            <th>Salon Discord</th>
-                            <th>Message</th>
-                            <th class="text-center">Actif</th>
-                            <th class="text-end">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var ch in settings.Channels)
-                        {
-                            var channelIdNum = ulong.TryParse(ch.DiscordChannelId, out var parsedId) ? parsedId : 0;
-                            var discordChannelName = channelIdNum != 0 ? (DiscordClient.GetChannel(channelIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
 
-                            <tr>
-                                <td>
-                                    @if (ch.IsEnabled)
+            <!-- Formulaire Ajout / Édition -->
+            @if (isAddingChannel || editingChannel != null)
+            {
+                <div class="card p-3 mb-4 bg-dark border-danger">
+                    <h6 class="fw-bold mb-3 text-danger">
+                        <i class="bi @(editingChannel != null ? "bi-pencil-square" : "bi-plus-circle") me-2"></i>
+                        @(editingChannel != null ? "Modifier la chaîne" : "Nouvelle chaîne YouTube à surveiller")
+                    </h6>
+
+                    <div class="row g-3">
+                        <!-- Sélection du serveur Discord -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Serveur Discord</label>
+                            @{
+                                var availableGuilds = GetAvailableGuilds();
+                            }
+                            @if (availableGuilds.Count > 0)
+                            {
+                                <select class="form-select bg-dark text-light border-secondary" @bind="formGuildId">
+                                    <option value="">-- Sélectionnez un serveur --</option>
+                                    @foreach (var g in availableGuilds)
                                     {
-                                        <span class="badge bg-success">Actif</span>
+                                        <option value="@g.Id.ToString()">@g.Name</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                                       placeholder="ID du serveur"
+                                       @bind="formGuildId" />
+                            }
+                        </div>
+
+                        <!-- Résolution / saisie de la chaîne -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Lien, @@handle ou ID de la chaîne</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control bg-dark text-light border-secondary"
+                                       placeholder="@@MrBeast ou https://youtube.com/..."
+                                       @bind="formInput" />
+                                <button class="btn btn-outline-danger" type="button" disabled="@isResolving" @onclick="ResolveInputAsync">
+                                    @if (isResolving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm" role="status"></span>
                                     }
                                     else
                                     {
-                                        <span class="badge bg-secondary">Désactivé</span>
+                                        <i class="bi bi-search"></i>
                                     }
-                                </td>
-                                <td>
-                                    <a href="https://www.youtube.com/channel/@ch.ChannelId" target="_blank" class="fw-bold text-decoration-none text-light d-flex align-items-center gap-1">
-                                        <i class="bi bi-youtube" style="color: #FF0000;"></i>
-                                        <span>@(string.IsNullOrWhiteSpace(ch.ChannelTitle) ? ch.ChannelId : ch.ChannelTitle)</span>
-                                        <i class="bi bi-box-arrow-up-right small text-secondary"></i>
-                                    </a>
-                                    @if (!string.IsNullOrWhiteSpace(ch.ChannelHandle))
+                                </button>
+                            </div>
+                            @if (!string.IsNullOrEmpty(resolutionMessage))
+                            {
+                                <div class="form-text text-warning small mt-1">@resolutionMessage</div>
+                            }
+                        </div>
+
+                        <!-- Salon Discord -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-semibold text-secondary">Salon Discord</label>
+                            @{
+                                var textChannels = GetTextChannels(formGuildId).ToList();
+                            }
+                            @if (textChannels.Count > 0)
+                            {
+                                <select class="form-select bg-dark text-light border-secondary" @bind="formDiscordChannelId">
+                                    <option value="">-- Sélectionnez un salon --</option>
+                                    @foreach (var ch in textChannels)
                                     {
-                                        <div class="small text-secondary">@ch.ChannelHandle</div>
+                                        <option value="@ch.Id.ToString()">#@ch.Name</option>
                                     }
-                                </td>
-                                <td>
-                                    <code class="text-warning small">@ch.ChannelId</code>
-                                </td>
-                                <td>
-                                    <span class="badge bg-dark font-monospace border border-secondary">
-                                        @(discordChannelName != null ? $"#{discordChannelName}" : ch.DiscordChannelId)
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="small text-secondary text-truncate d-inline-block" style="max-width: 200px;" title="@ch.CustomMessage">
-                                        @ch.CustomMessage
-                                    </span>
-                                </td>
-                                <td class="text-center">
-                                    <div class="form-check form-switch d-inline-block">
-                                        <input class="form-check-input" type="checkbox" checked="@ch.IsEnabled" @onchange="() => ToggleChannelEnabledAsync(ch)" />
-                                    </div>
-                                </td>
-                                <td class="text-end">
-                                    <div class="btn-group btn-group-sm">
-                                        <button class="btn btn-outline-info"
-                                                title="Envoyer une notification de test"
-                                                disabled="@testingChannels.Contains(ch.ChannelId)"
-                                                @onclick="() => TestNotificationAsync(ch.ChannelId)">
-                                            @if (testingChannels.Contains(ch.ChannelId))
-                                            {
-                                                <span class="spinner-border spinner-border-sm" role="status"></span>
-                                            }
-                                            else
-                                            {
-                                                <i class="bi bi-send"></i>
-                                            }
-                                        </button>
-                                        <button class="btn btn-outline-secondary" title="Modifier" @onclick="() => EditChannel(ch)">
-                                            <i class="bi bi-pencil"></i>
-                                        </button>
-                                        <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannelAsync(ch)">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
+                                </select>
+                            }
+                            else
+                            {
+                                <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                                       placeholder="ID du salon (ex: 1234567890)"
+                                       @bind="formDiscordChannelId" />
+                            }
+                        </div>
+
+                        <!-- Infos résolues (read-only ou confirmation) -->
+                        @if (!string.IsNullOrWhiteSpace(formChannelId))
+                        {
+                            <div class="col-12">
+                                <div class="p-2 rounded bg-black border border-secondary small d-flex align-items-center gap-3">
+                                    <span class="text-success"><i class="bi bi-check-circle me-1"></i> Résolu :</span>
+                                    <strong>@formChannelTitle</strong>
+                                    <code class="text-warning">@formChannelId</code>
+                                    @if (!string.IsNullOrWhiteSpace(formChannelHandle))
+                                    {
+                                        <span class="text-secondary">(@formChannelHandle)</span>
+                                    }
+                                </div>
+                            </div>
                         }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </div>
+
+                        <!-- Message personnalisé -->
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label small fw-semibold text-secondary mb-0">Message personnalisé</label>
+                                <div class="small">
+                                    <span class="text-secondary me-1">Variables :</span>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{channel}")'>{channel}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{title}")'>{title}</button>
+                                    <button type="button" class="badge bg-secondary border-0 me-1" @onclick='() => AppendVariable("{type}")'>{type}</button>
+                                    <button type="button" class="badge bg-secondary border-0" @onclick='() => AppendVariable("{url}")'>{url}</button>
+                                </div>
+                            </div>
+                            <textarea class="form-control bg-dark text-light border-secondary" rows="2"
+                                      @bind="formCustomMessage"></textarea>
+                        </div>
+
+                        <!-- Statut actif et boutons -->
+                        <div class="col-12 d-flex justify-content-between align-items-center">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="channelEnableSwitch" @bind="formIsEnabled">
+                                <label class="form-check-label small" for="channelEnableSwitch">Activer les notifications pour cette chaîne</label>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelForm">Annuler</button>
+                                <button class="btn btn-sm btn-danger" style="background-color: #CC0000; border-color: #CC0000;" @onclick="SaveChannelFormAsync">
+                                    Enregistrer la chaîne
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- Liste des chaînes -->
+            @{
+                var displayedChannels = settings.Channels
+                    .Where(c => isSuperAdmin || authorizedGuildIds.Contains(c.GuildId))
+                    .ToList();
+            }
+
+            @if (displayedChannels.Count == 0)
+            {
+                <div class="text-center py-4 text-secondary">
+                    <i class="bi bi-youtube fs-2 d-block mb-2" style="color: #666;"></i>
+                    <p class="mb-0">Aucune chaîne YouTube enregistrée pour vos serveurs. Cliquez sur "Ajouter une chaîne" pour commencer.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover align-middle mb-0">
+                        <thead>
+                            <tr class="text-secondary small">
+                                <th>Statut</th>
+                                <th>Serveur</th>
+                                <th>Chaîne YouTube</th>
+                                <th>ID Canonique</th>
+                                <th>Salon Discord</th>
+                                <th>Message</th>
+                                <th class="text-center">Actif</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var ch in displayedChannels)
+                            {
+                                var channelIdNum = ulong.TryParse(ch.DiscordChannelId, out var parsedId) ? parsedId : 0;
+                                var discordChannelName = channelIdNum != 0 ? (DiscordClient.GetChannel(channelIdNum) as Discord.WebSocket.SocketGuildChannel)?.Name : null;
+                                var guild = ulong.TryParse(ch.GuildId, out var parsedGId) ? DiscordClient.GetGuild(parsedGId) : null;
+                                var guildDisplayName = guild?.Name ?? (string.IsNullOrEmpty(ch.GuildId) ? "—" : ch.GuildId);
+
+                                <tr>
+                                    <td>
+                                        @if (ch.IsEnabled)
+                                        {
+                                            <span class="badge bg-success">Actif</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Désactivé</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-dark border border-secondary text-light">@guildDisplayName</span>
+                                    </td>
+                                    <td>
+                                        <a href="https://www.youtube.com/channel/@ch.ChannelId" target="_blank" class="fw-bold text-decoration-none text-light d-flex align-items-center gap-1">
+                                            <i class="bi bi-youtube" style="color: #FF0000;"></i>
+                                            <span>@(string.IsNullOrWhiteSpace(ch.ChannelTitle) ? ch.ChannelId : ch.ChannelTitle)</span>
+                                            <i class="bi bi-box-arrow-up-right small text-secondary"></i>
+                                        </a>
+                                        @if (!string.IsNullOrWhiteSpace(ch.ChannelHandle))
+                                        {
+                                            <div class="small text-secondary">@ch.ChannelHandle</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <code class="text-warning small">@ch.ChannelId</code>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-dark font-monospace border border-secondary">
+                                            @(discordChannelName != null ? $"#{discordChannelName}" : ch.DiscordChannelId)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="small text-secondary text-truncate d-inline-block" style="max-width: 200px;" title="@ch.CustomMessage">
+                                            @ch.CustomMessage
+                                        </span>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="form-check form-switch d-inline-block">
+                                            <input class="form-check-input" type="checkbox" checked="@ch.IsEnabled" @onchange="() => ToggleChannelEnabledAsync(ch)" />
+                                        </div>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-info"
+                                                    title="Envoyer une notification de test"
+                                                    disabled="@testingChannels.Contains($"{ch.GuildId}:{ch.ChannelId}")"
+                                                    @onclick="() => TestNotificationAsync(ch)">
+                                                @if (testingChannels.Contains($"{ch.GuildId}:{ch.ChannelId}"))
+                                                {
+                                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-send"></i>
+                                                }
+                                            </button>
+                                            <button class="btn btn-outline-secondary" title="Modifier" @onclick="() => EditChannel(ch)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => RemoveChannelAsync(ch)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
 </div>
 
 @code {
     private YouTubeSettingsDto settings = new();
+    private System.Security.Claims.ClaimsPrincipal currentUser = new();
+    private bool isSuperAdmin = false;
+    private IReadOnlyList<string> authorizedGuildIds = [];
 
     private bool isChecking = false;
     private bool isResolving = false;
@@ -362,6 +418,7 @@
     private bool isAddingChannel = false;
     private TrackedYouTubeChannelDto? editingChannel = null;
 
+    private string formGuildId = string.Empty;
     private string formInput = string.Empty;
     private string formChannelId = string.Empty;
     private string formChannelTitle = string.Empty;
@@ -376,8 +433,38 @@
         settings = ConfigService.GetSettings();
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        currentUser = authState.User;
+        isSuperAdmin = PermissionService.IsSuperAdmin(currentUser);
+        authorizedGuildIds = PermissionService.GetAuthorizedGuildIds(currentUser, GuildFeatureFlagsDto.YouTube);
+    }
+
+    private List<SocketGuild> GetAvailableGuilds()
+    {
+        return DiscordClient.Guilds
+            .Where(g => isSuperAdmin || authorizedGuildIds.Contains(g.Id.ToString()))
+            .OrderBy(g => g.Name)
+            .ToList();
+    }
+
+    private IEnumerable<SocketTextChannel> GetTextChannels(string guildId)
+    {
+        if (ulong.TryParse(guildId, out var gId))
+        {
+            var guild = DiscordClient.GetGuild(gId);
+            if (guild != null)
+            {
+                return guild.TextChannels.OrderBy(c => c.Position);
+            }
+        }
+        return [];
+    }
+
     private async Task ToggleGlobalEnabledAsync()
     {
+        if (!isSuperAdmin) return;
         settings.IsEnabled = !settings.IsEnabled;
         await ConfigService.SaveSettingsAsync(settings);
         feedbackMessage = settings.IsEnabled ? "Notifications YouTube activées." : "Notifications YouTube désactivées.";
@@ -386,6 +473,7 @@
 
     private async Task SaveSettingsAsync()
     {
+        if (!isSuperAdmin) return;
         await ConfigService.SaveSettingsAsync(settings);
         feedbackMessage = "Configuration YouTube enregistrée avec succès.";
         isSuccessFeedback = true;
@@ -393,6 +481,7 @@
 
     private async Task CheckNowAsync()
     {
+        if (!isSuperAdmin) return;
         isChecking = true;
         try
         {
@@ -411,12 +500,20 @@
         }
     }
 
-    private async Task TestNotificationAsync(string channelId)
+    private async Task TestNotificationAsync(TrackedYouTubeChannelDto ch)
     {
-        testingChannels.Add(channelId);
+        if (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, ch.GuildId, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation de tester sur ce serveur.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var key = $"{ch.GuildId}:{ch.ChannelId}";
+        testingChannels.Add(key);
         try
         {
-            var result = await NotificationService.TestNotificationAsync(channelId);
+            var result = await NotificationService.TestNotificationAsync(ch.ChannelId, ch.GuildId);
             feedbackMessage = result.Message;
             isSuccessFeedback = result.Success;
         }
@@ -427,7 +524,7 @@
         }
         finally
         {
-            testingChannels.Remove(channelId);
+            testingChannels.Remove(key);
         }
     }
 
@@ -435,6 +532,8 @@
     {
         editingChannel = null;
         isAddingChannel = true;
+        var available = GetAvailableGuilds();
+        formGuildId = available.FirstOrDefault()?.Id.ToString() ?? (authorizedGuildIds.FirstOrDefault() ?? string.Empty);
         formInput = string.Empty;
         formChannelId = string.Empty;
         formChannelTitle = string.Empty;
@@ -447,8 +546,16 @@
 
     private void EditChannel(TrackedYouTubeChannelDto channel)
     {
+        if (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, channel.GuildId, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation de modifier cette chaîne.";
+            isSuccessFeedback = false;
+            return;
+        }
+
         editingChannel = channel;
         isAddingChannel = false;
+        formGuildId = channel.GuildId;
         formInput = !string.IsNullOrWhiteSpace(channel.ChannelHandle) ? channel.ChannelHandle : channel.ChannelId;
         formChannelId = channel.ChannelId;
         formChannelTitle = channel.ChannelTitle;
@@ -520,38 +627,82 @@
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(formDiscordChannelId))
+        var guildIdTrimmed = formGuildId.Trim();
+        if (string.IsNullOrWhiteSpace(guildIdTrimmed))
         {
-            feedbackMessage = "Le salon Discord cible est requis.";
+            feedbackMessage = "Veuillez sélectionner un serveur Discord valide.";
             isSuccessFeedback = false;
             return;
         }
 
+        // Vérification de sécurité côté serveur
+        if (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, guildIdTrimmed, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation d'administrer les alertes YouTube sur ce serveur.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (editingChannel != null && !isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, editingChannel.GuildId, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation de modifier une chaîne de ce serveur.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var channelIdTrimmed = formDiscordChannelId.Trim();
+        if (string.IsNullOrWhiteSpace(channelIdTrimmed) || !ulong.TryParse(channelIdTrimmed, out var parsedChannelId) || parsedChannelId == 0)
+        {
+            feedbackMessage = "Le salon Discord cible est requis et doit être un ID valide.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (!PermissionService.IsChannelInGuild(channelIdTrimmed, guildIdTrimmed))
+        {
+            feedbackMessage = "Le salon Discord spécifié n'appartient pas au serveur sélectionné.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var existing = settings.Channels.FirstOrDefault(c =>
+            c.GuildId == guildIdTrimmed &&
+            c.ChannelId.Equals(formChannelId.Trim(), StringComparison.OrdinalIgnoreCase));
+
         if (editingChannel != null)
         {
+            if (existing != null && existing != editingChannel)
+            {
+                feedbackMessage = $"La chaîne YouTube '{formChannelId}' est déjà suivie sur ce serveur.";
+                isSuccessFeedback = false;
+                return;
+            }
+
+            editingChannel.GuildId = guildIdTrimmed;
             editingChannel.ChannelId = formChannelId.Trim();
             editingChannel.ChannelTitle = !string.IsNullOrWhiteSpace(formChannelTitle) ? formChannelTitle.Trim() : formChannelId.Trim();
             editingChannel.ChannelHandle = formChannelHandle.Trim();
-            editingChannel.DiscordChannelId = formDiscordChannelId.Trim();
+            editingChannel.DiscordChannelId = channelIdTrimmed;
             editingChannel.CustomMessage = formCustomMessage;
             editingChannel.IsEnabled = formIsEnabled;
             feedbackMessage = $"Chaîne YouTube '{editingChannel.ChannelTitle}' mise à jour avec succès.";
         }
         else
         {
-            if (settings.Channels.Any(c => c.ChannelId.Equals(formChannelId.Trim(), StringComparison.OrdinalIgnoreCase)))
+            if (existing != null)
             {
-                feedbackMessage = $"La chaîne YouTube '{formChannelId}' est déjà suivie.";
+                feedbackMessage = $"La chaîne YouTube '{formChannelId}' est déjà suivie sur ce serveur.";
                 isSuccessFeedback = false;
                 return;
             }
 
             var newChannel = new TrackedYouTubeChannelDto
             {
+                GuildId = guildIdTrimmed,
                 ChannelId = formChannelId.Trim(),
                 ChannelTitle = !string.IsNullOrWhiteSpace(formChannelTitle) ? formChannelTitle.Trim() : formChannelId.Trim(),
                 ChannelHandle = formChannelHandle.Trim(),
-                DiscordChannelId = formDiscordChannelId.Trim(),
+                DiscordChannelId = channelIdTrimmed,
                 CustomMessage = formCustomMessage,
                 IsEnabled = formIsEnabled
             };
@@ -567,6 +718,13 @@
 
     private async Task RemoveChannelAsync(TrackedYouTubeChannelDto channel)
     {
+        if (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, channel.GuildId, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation de supprimer cette chaîne.";
+            isSuccessFeedback = false;
+            return;
+        }
+
         settings.Channels.Remove(channel);
         await ConfigService.SaveSettingsAsync(settings);
         feedbackMessage = $"Chaîne YouTube '{channel.ChannelTitle}' supprimée.";
@@ -575,6 +733,13 @@
 
     private async Task ToggleChannelEnabledAsync(TrackedYouTubeChannelDto channel)
     {
+        if (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser, channel.GuildId, GuildFeatureFlagsDto.YouTube))
+        {
+            feedbackMessage = "Vous n'avez pas l'autorisation de modifier cette chaîne.";
+            isSuccessFeedback = false;
+            return;
+        }
+
         channel.IsEnabled = !channel.IsEnabled;
         await ConfigService.SaveSettingsAsync(settings);
         feedbackMessage = channel.IsEnabled ? $"Chaîne '{channel.ChannelTitle}' activée." : $"Chaîne '{channel.ChannelTitle}' désactivée.";

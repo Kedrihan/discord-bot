@@ -1,5 +1,5 @@
 ﻿@page "/settings"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "SuperAdminOnly")]
 @rendermode InteractiveServer
 @inject TechWatchConfigService ConfigService
 @inject TechWatchService TechWatchService

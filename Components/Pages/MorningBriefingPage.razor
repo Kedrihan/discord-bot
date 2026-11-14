@@ -1,5 +1,5 @@
 ﻿@page "/briefing"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "AdminOnly")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "SuperAdminOnly")]
 @rendermode InteractiveServer
 @inject MorningBriefingConfigService ConfigService
 @inject MorningBriefingService BriefingService

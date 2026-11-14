@@ -11,6 +11,24 @@ public class YouTubeHistoryService(
 {
     private const int MaxVideosRetained = 5000;
 
+    public bool IsVideoSeen(string guildId, string videoId)
+    {
+        if (string.IsNullOrWhiteSpace(videoId)) return false;
+
+        try
+        {
+            var trimmedVideo = videoId.Trim();
+            var trimmedGuild = guildId?.Trim() ?? string.Empty;
+            using var context = dbContextFactory.CreateDbContext();
+            return context.YouTubeVideoHistory.Any(v => v.GuildId == trimmedGuild && v.VideoId == trimmedVideo);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification de la vidéo YouTube Guild={GuildId}, {VideoId}", guildId, videoId);
+            return false;
+        }
+    }
+
     public bool IsVideoSeen(string videoId)
     {
         if (string.IsNullOrWhiteSpace(videoId)) return false;
@@ -24,6 +42,24 @@ public class YouTubeHistoryService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de la vérification de la vidéo YouTube : {VideoId}", videoId);
+            return false;
+        }
+    }
+
+    public bool IsChannelInitialized(string guildId, string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId)) return false;
+
+        try
+        {
+            var trimmedChannel = channelId.Trim();
+            var trimmedGuild = guildId?.Trim() ?? string.Empty;
+            using var context = dbContextFactory.CreateDbContext();
+            return context.YouTubeInitializedChannels.Any(c => c.GuildId == trimmedGuild && c.ChannelId == trimmedChannel);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification de l'initialisation de la chaîne YouTube Guild={GuildId}, {ChannelId}", guildId, channelId);
             return false;
         }
     }
@@ -45,22 +81,24 @@ public class YouTubeHistoryService(
         }
     }
 
-    public async Task InitializeChannelAsync(string channelId, IEnumerable<string> existingVideoIds, CancellationToken ct = default)
+    public async Task InitializeChannelAsync(string guildId, string channelId, IEnumerable<string> existingVideoIds, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(channelId)) return;
 
         var trimmedChannelId = channelId.Trim();
+        var trimmedGuildId = guildId?.Trim() ?? string.Empty;
         var now = timeProvider.GetUtcNow();
 
         try
         {
             await using var context = await dbContextFactory.CreateDbContextAsync(ct);
 
-            var existingChannel = await context.YouTubeInitializedChannels.FindAsync([trimmedChannelId], ct);
+            var existingChannel = await context.YouTubeInitializedChannels.FindAsync([trimmedGuildId, trimmedChannelId], ct);
             if (existingChannel == null)
             {
                 context.YouTubeInitializedChannels.Add(new YouTubeInitializedChannelEntity
                 {
+                    GuildId = trimmedGuildId,
                     ChannelId = trimmedChannelId,
                     InitializedAt = now
                 });
@@ -70,11 +108,12 @@ public class YouTubeHistoryService(
             {
                 if (string.IsNullOrWhiteSpace(videoId)) continue;
                 var trimmed = videoId.Trim();
-                var existingVideo = await context.YouTubeVideoHistory.FindAsync([trimmed], ct);
+                var existingVideo = await context.YouTubeVideoHistory.FindAsync([trimmedGuildId, trimmed], ct);
                 if (existingVideo == null)
                 {
                     context.YouTubeVideoHistory.Add(new YouTubeVideoHistoryEntity
                     {
+                        GuildId = trimmedGuildId,
                         VideoId = trimmed,
                         ChannelId = trimmedChannelId,
                         DiscoveredAt = now
@@ -83,20 +122,24 @@ public class YouTubeHistoryService(
             }
 
             await PruneOldVideosAndSaveAsync(context, now, ct);
-            logger.LogInformation("Chaîne YouTube {ChannelId} initialisée avec protection contre le cold-start.", channelId);
+            logger.LogInformation("Chaîne YouTube Guild={GuildId}, {ChannelId} initialisée avec protection contre le cold-start.", trimmedGuildId, channelId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors de l'initialisation de la chaîne YouTube {ChannelId}.", channelId);
+            logger.LogError(ex, "Erreur lors de l'initialisation de la chaîne YouTube Guild={GuildId}, {ChannelId}.", trimmedGuildId, channelId);
         }
     }
 
-    public async Task MarkVideosAsSeenAsync(IEnumerable<string> videoIds, string channelId, CancellationToken ct = default)
+    public Task InitializeChannelAsync(string channelId, IEnumerable<string> existingVideoIds, CancellationToken ct = default)
+        => InitializeChannelAsync(string.Empty, channelId, existingVideoIds, ct);
+
+    public async Task MarkVideosAsSeenAsync(string guildId, IEnumerable<string> videoIds, string channelId, CancellationToken ct = default)
     {
         var videoIdList = videoIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).ToList();
         if (videoIdList.Count == 0 && string.IsNullOrWhiteSpace(channelId)) return;
 
         var trimmedChannelId = channelId?.Trim() ?? string.Empty;
+        var trimmedGuildId = guildId?.Trim() ?? string.Empty;
         var now = timeProvider.GetUtcNow();
 
         try
@@ -105,11 +148,12 @@ public class YouTubeHistoryService(
 
             if (!string.IsNullOrEmpty(trimmedChannelId))
             {
-                var existingChannel = await context.YouTubeInitializedChannels.FindAsync([trimmedChannelId], ct);
+                var existingChannel = await context.YouTubeInitializedChannels.FindAsync([trimmedGuildId, trimmedChannelId], ct);
                 if (existingChannel == null)
                 {
                     context.YouTubeInitializedChannels.Add(new YouTubeInitializedChannelEntity
                     {
+                        GuildId = trimmedGuildId,
                         ChannelId = trimmedChannelId,
                         InitializedAt = now
                     });
@@ -118,11 +162,12 @@ public class YouTubeHistoryService(
 
             foreach (var videoId in videoIdList)
             {
-                var existingVideo = await context.YouTubeVideoHistory.FindAsync([videoId], ct);
+                var existingVideo = await context.YouTubeVideoHistory.FindAsync([trimmedGuildId, videoId], ct);
                 if (existingVideo == null)
                 {
                     context.YouTubeVideoHistory.Add(new YouTubeVideoHistoryEntity
                     {
+                        GuildId = trimmedGuildId,
                         VideoId = videoId,
                         ChannelId = trimmedChannelId,
                         DiscoveredAt = now
@@ -134,14 +179,17 @@ public class YouTubeHistoryService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors du marquage des vidéos comme vues pour la chaîne YouTube {ChannelId}.", channelId);
+            logger.LogError(ex, "Erreur lors du marquage des vidéos comme vues pour Guild={GuildId}, Chaîne={ChannelId}.", trimmedGuildId, channelId);
         }
     }
 
+    public Task MarkVideosAsSeenAsync(IEnumerable<string> videoIds, string channelId, CancellationToken ct = default)
+        => MarkVideosAsSeenAsync(string.Empty, videoIds, channelId, ct);
+
     private static async Task PruneOldVideosAndSaveAsync(BotDbContext context, DateTimeOffset now, CancellationToken ct)
     {
-        // Nettoyage des vidéos de plus de 90 jours
-        var cutoff = now.AddDays(-90);
+        // Nettoyage des vidéos de plus de 30 jours
+        var cutoff = now.AddDays(-30);
         var oldVideos = context.YouTubeVideoHistory.Where(v => v.DiscoveredAt < cutoff);
         context.YouTubeVideoHistory.RemoveRange(oldVideos);
 

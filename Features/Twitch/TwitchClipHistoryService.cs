@@ -11,6 +11,24 @@ public class TwitchClipHistoryService(
 {
     private const int MaxClipsRetained = 5000;
 
+    public bool IsClipSeen(string guildId, string clipId)
+    {
+        if (string.IsNullOrWhiteSpace(clipId)) return false;
+
+        try
+        {
+            var trimmedClip = clipId.Trim();
+            var trimmedGuild = guildId?.Trim() ?? string.Empty;
+            using var context = dbContextFactory.CreateDbContext();
+            return context.TwitchClips.Any(c => c.GuildId == trimmedGuild && c.ClipId == trimmedClip);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification du clip Guild={GuildId}, Clip={ClipId}", guildId, clipId);
+            return false;
+        }
+    }
+
     public bool IsClipSeen(string clipId)
     {
         if (string.IsNullOrWhiteSpace(clipId)) return false;
@@ -24,6 +42,24 @@ public class TwitchClipHistoryService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Erreur lors de la vérification du clip : {ClipId}", clipId);
+            return false;
+        }
+    }
+
+    public bool IsBroadcasterInitialized(string guildId, string broadcasterId)
+    {
+        if (string.IsNullOrWhiteSpace(broadcasterId)) return false;
+
+        try
+        {
+            var trimmedBroadcaster = broadcasterId.Trim();
+            var trimmedGuild = guildId?.Trim() ?? string.Empty;
+            using var context = dbContextFactory.CreateDbContext();
+            return context.TwitchInitializedBroadcasters.Any(b => b.GuildId == trimmedGuild && b.BroadcasterId == trimmedBroadcaster);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erreur lors de la vérification de l'initialisation du broadcaster Guild={GuildId}, {BroadcasterId}", guildId, broadcasterId);
             return false;
         }
     }
@@ -45,22 +81,24 @@ public class TwitchClipHistoryService(
         }
     }
 
-    public async Task InitializeBroadcasterAsync(string broadcasterId, IEnumerable<string> existingClipIds, CancellationToken ct = default)
+    public async Task InitializeBroadcasterAsync(string guildId, string broadcasterId, IEnumerable<string> existingClipIds, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(broadcasterId)) return;
 
         var trimmedBroadcasterId = broadcasterId.Trim();
+        var trimmedGuildId = guildId?.Trim() ?? string.Empty;
         var now = timeProvider.GetUtcNow();
 
         try
         {
             await using var context = await dbContextFactory.CreateDbContextAsync(ct);
 
-            var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedBroadcasterId], ct);
+            var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedGuildId, trimmedBroadcasterId], ct);
             if (existingBroadcaster == null)
             {
                 context.TwitchInitializedBroadcasters.Add(new TwitchInitializedBroadcasterEntity
                 {
+                    GuildId = trimmedGuildId,
                     BroadcasterId = trimmedBroadcasterId,
                     InitializedAt = now
                 });
@@ -70,11 +108,12 @@ public class TwitchClipHistoryService(
             {
                 if (string.IsNullOrWhiteSpace(clipId)) continue;
                 var trimmed = clipId.Trim();
-                var existingClip = await context.TwitchClips.FindAsync([trimmed], ct);
+                var existingClip = await context.TwitchClips.FindAsync([trimmedGuildId, trimmed], ct);
                 if (existingClip == null)
                 {
                     context.TwitchClips.Add(new TwitchClipHistoryEntity
                     {
+                        GuildId = trimmedGuildId,
                         ClipId = trimmed,
                         BroadcasterId = trimmedBroadcasterId,
                         DiscoveredAt = now
@@ -83,20 +122,24 @@ public class TwitchClipHistoryService(
             }
 
             await PruneOldClipsAndSaveAsync(context, now, ct);
-            logger.LogInformation("Broadcaster Twitch {BroadcasterId} initialisé avec protection contre le cold-start.", broadcasterId);
+            logger.LogInformation("Broadcaster Twitch Guild={GuildId}, {BroadcasterId} initialisé avec protection contre le cold-start.", trimmedGuildId, broadcasterId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors de l'initialisation du broadcaster {BroadcasterId}.", broadcasterId);
+            logger.LogError(ex, "Erreur lors de l'initialisation du broadcaster Guild={GuildId}, {BroadcasterId}.", trimmedGuildId, broadcasterId);
         }
     }
 
-    public async Task MarkClipsAsSeenAsync(IEnumerable<string> clipIds, string broadcasterId, CancellationToken ct = default)
+    public Task InitializeBroadcasterAsync(string broadcasterId, IEnumerable<string> existingClipIds, CancellationToken ct = default)
+        => InitializeBroadcasterAsync(string.Empty, broadcasterId, existingClipIds, ct);
+
+    public async Task MarkClipsAsSeenAsync(string guildId, IEnumerable<string> clipIds, string broadcasterId, CancellationToken ct = default)
     {
         var clipIdList = clipIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).ToList();
         if (clipIdList.Count == 0 && string.IsNullOrWhiteSpace(broadcasterId)) return;
 
         var trimmedBroadcasterId = broadcasterId?.Trim() ?? string.Empty;
+        var trimmedGuildId = guildId?.Trim() ?? string.Empty;
         var now = timeProvider.GetUtcNow();
 
         try
@@ -105,11 +148,12 @@ public class TwitchClipHistoryService(
 
             if (!string.IsNullOrEmpty(trimmedBroadcasterId))
             {
-                var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedBroadcasterId], ct);
+                var existingBroadcaster = await context.TwitchInitializedBroadcasters.FindAsync([trimmedGuildId, trimmedBroadcasterId], ct);
                 if (existingBroadcaster == null)
                 {
                     context.TwitchInitializedBroadcasters.Add(new TwitchInitializedBroadcasterEntity
                     {
+                        GuildId = trimmedGuildId,
                         BroadcasterId = trimmedBroadcasterId,
                         InitializedAt = now
                     });
@@ -118,11 +162,12 @@ public class TwitchClipHistoryService(
 
             foreach (var clipId in clipIdList)
             {
-                var existingClip = await context.TwitchClips.FindAsync([clipId], ct);
+                var existingClip = await context.TwitchClips.FindAsync([trimmedGuildId, clipId], ct);
                 if (existingClip == null)
                 {
                     context.TwitchClips.Add(new TwitchClipHistoryEntity
                     {
+                        GuildId = trimmedGuildId,
                         ClipId = clipId,
                         BroadcasterId = trimmedBroadcasterId,
                         DiscoveredAt = now
@@ -134,9 +179,12 @@ public class TwitchClipHistoryService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Erreur lors du marquage des clips comme vus pour le broadcaster {BroadcasterId}.", broadcasterId);
+            logger.LogError(ex, "Erreur lors du marquage des clips comme vus pour Guild={GuildId}, Broadcaster={BroadcasterId}.", trimmedGuildId, broadcasterId);
         }
     }
+
+    public Task MarkClipsAsSeenAsync(IEnumerable<string> clipIds, string broadcasterId, CancellationToken ct = default)
+        => MarkClipsAsSeenAsync(string.Empty, clipIds, broadcasterId, ct);
 
     private static async Task PruneOldClipsAndSaveAsync(BotDbContext context, DateTimeOffset now, CancellationToken ct)
     {

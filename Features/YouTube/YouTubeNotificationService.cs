@@ -217,10 +217,11 @@ public partial class YouTubeNotificationService(
                 if (videos.Count == 0) continue;
 
                 // Cold-start protection
-                if (!historyService.IsChannelInitialized(channel.ChannelId))
+                if (!historyService.IsChannelInitialized(channel.GuildId, channel.ChannelId))
                 {
-                    await historyService.InitializeChannelAsync(channel.ChannelId, videos.Select(v => v.VideoId), ct);
-                    logger.LogInformation("Protection cold-start activée : {Count} vidéo(s) marquées comme déjà vues pour la chaîne {Channel} ({ChannelId}).", videos.Count, channel.ChannelTitle, channel.ChannelId);
+                    await historyService.InitializeChannelAsync(channel.GuildId, channel.ChannelId, videos.Select(v => v.VideoId), ct);
+                    logger.LogInformation("Protection cold-start activée : {Count} vidéo(s) marquées comme déjà vues pour la chaîne Guild={GuildId}, {Channel} ({ChannelId}).",
+                        videos.Count, channel.GuildId, channel.ChannelTitle, channel.ChannelId);
                     continue;
                 }
 
@@ -238,7 +239,7 @@ public partial class YouTubeNotificationService(
                 }
 
                 var newVideos = videos
-                    .Where(v => !historyService.IsVideoSeen(v.VideoId))
+                    .Where(v => !historyService.IsVideoSeen(channel.GuildId, v.VideoId))
                     .OrderBy(v => v.PublishedAt)
                     .ToList();
 
@@ -254,12 +255,13 @@ public partial class YouTubeNotificationService(
                         var embed = BuildVideoEmbed(video);
 
                         await messageChannel.SendMessageAsync(text: text, embed: embed, allowedMentions: allowedMentions);
-                        await historyService.MarkVideosAsSeenAsync([video.VideoId], channel.ChannelId, ct);
+                        await historyService.MarkVideosAsSeenAsync(channel.GuildId, [video.VideoId], channel.ChannelId, ct);
                         processedVideosCount++;
 
                         var safeTitle = video.Title.Replace("\r", "").Replace("\n", "");
                         var safeChannel = video.ChannelTitle.Replace("\r", "").Replace("\n", "");
-                        logger.LogInformation("Notification YouTube envoyée pour {Channel} : {Title} (ID: {VideoId}, Salon: {ChannelId}).", safeChannel, safeTitle, video.VideoId, discordChannelId);
+                        logger.LogInformation("Notification YouTube envoyée pour Guild={GuildId}, {Channel} : {Title} (ID: {VideoId}, Salon: {ChannelId}).",
+                            channel.GuildId, safeChannel, safeTitle, video.VideoId, discordChannelId);
                     }
                     catch (Exception ex)
                     {
@@ -276,7 +278,7 @@ public partial class YouTubeNotificationService(
         }
     }
 
-    public async Task<YouTubeExecutionResultDto> TestNotificationAsync(string channelId, CancellationToken ct = default)
+    public async Task<YouTubeExecutionResultDto> TestNotificationAsync(string channelId, string? guildId = null, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(channelId))
         {
@@ -284,7 +286,9 @@ public partial class YouTubeNotificationService(
         }
 
         var settings = configService.GetSettings();
-        var channel = settings.Channels.FirstOrDefault(c => c.ChannelId.Equals(channelId.Trim(), StringComparison.OrdinalIgnoreCase));
+        var channel = settings.Channels.FirstOrDefault(c =>
+            c.ChannelId.Equals(channelId.Trim(), StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrEmpty(guildId) || c.GuildId == guildId));
         if (channel == null)
         {
             return new YouTubeExecutionResultDto(false, $"La chaîne YouTube avec l'identifiant '{channelId}' n'a pas été trouvée dans la configuration.");

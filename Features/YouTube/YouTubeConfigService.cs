@@ -64,6 +64,7 @@ public class YouTubeConfigService(
         entity.Channels = newSettings.Channels.Select(c => new TrackedYouTubeChannelEntity
         {
             YouTubeSettingsId = 1,
+            GuildId = c.GuildId?.Trim() ?? string.Empty,
             ChannelId = c.ChannelId?.Trim() ?? string.Empty,
             ChannelTitle = !string.IsNullOrWhiteSpace(c.ChannelTitle) ? c.ChannelTitle.Trim() : (c.ChannelId?.Trim() ?? string.Empty),
             ChannelHandle = c.ChannelHandle?.Trim() ?? string.Empty,
@@ -110,6 +111,7 @@ public class YouTubeConfigService(
         CheckIntervalMinutes = entity.CheckIntervalMinutes,
         Channels = entity.Channels.Select(c => new TrackedYouTubeChannelDto
         {
+            GuildId = c.GuildId,
             ChannelId = c.ChannelId,
             ChannelTitle = c.ChannelTitle,
             ChannelHandle = c.ChannelHandle,

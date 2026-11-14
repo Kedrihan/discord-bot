@@ -1,0 +1,293 @@
+@page "/permissions"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "SuperAdminOnly")]
+@rendermode InteractiveServer
+@inject PermissionService PermissionService
+@inject DiscordSocketClient DiscordClient
+
+<div class="container py-2" style="max-width: 1000px;">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1">
+                <i class="bi bi-shield-lock-fill text-warning me-2"></i>Gestion des Permissions Serveur (RBAC)
+            </h3>
+            <p class="text-secondary mb-0">Déléguez des accès administrateur par serveur Discord avec sélection granulaire des modules (Twitch, YouTube).</p>
+        </div>
+    </div>
+
+    <!-- Alertes de feedback -->
+    @if (!string.IsNullOrEmpty(feedbackMessage))
+    {
+        <div class="alert @(isSuccessFeedback ? "alert-success" : "alert-danger") alert-dismissible fade show d-flex align-items-center gap-2 mb-4" role="alert">
+            <i class="bi @(isSuccessFeedback ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill") fs-5"></i>
+            <div class="flex-grow-1">@feedbackMessage</div>
+            <button type="button" class="btn-close" @onclick="() => feedbackMessage = null"></button>
+        </div>
+    }
+
+    <!-- Formulaire d'ajout / modification -->
+    <div class="card p-4 shadow-sm border-secondary mb-4">
+        <h5 class="fw-bold mb-3">
+            <i class="bi @(isEditing ? "bi-pencil-square text-info" : "bi-person-plus text-primary") me-2"></i>
+            @(isEditing ? "Modifier les permissions" : "Attribuer une nouvelle permission administrateur")
+        </h5>
+
+        <div class="row g-3">
+            <!-- Sélection du serveur -->
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Serveur Discord (Guild)</label>
+                @if (DiscordClient.Guilds.Count > 0)
+                {
+                    <select class="form-select bg-dark text-light border-secondary" @bind="formGuildId">
+                        <option value="">-- Sélectionnez un serveur --</option>
+                        @foreach (var guild in DiscordClient.Guilds)
+                        {
+                            <option value="@guild.Id.ToString()">@guild.Name (@guild.Id)</option>
+                        }
+                    </select>
+                }
+                else
+                {
+                    <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                           placeholder="ID du serveur Discord (ex: 123456789012345678)"
+                           @bind="formGuildId" />
+                }
+                <div class="form-text text-secondary small">Serveur Discord sur lequel accorder l'accès.</div>
+            </div>
+
+            <!-- Identifiant utilisateur Discord -->
+            <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Discord User ID</label>
+                <input type="text" class="form-control bg-dark text-light border-secondary font-monospace"
+                       placeholder="ex: 116893981526196227"
+                       @bind="formUserId" />
+                <div class="form-text text-secondary small">Identifiant numérique unique de l'utilisateur Discord.</div>
+            </div>
+
+            <!-- Checkboxes de fonctionnalités -->
+            <div class="col-12">
+                <label class="form-label small fw-semibold text-secondary d-block">Modules autorisés</label>
+                <div class="d-flex flex-wrap gap-4 p-3 rounded bg-dark border border-secondary">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="twitchFeatureSwitch" @bind="formTwitchEnabled">
+                        <label class="form-check-label text-light fw-semibold" for="twitchFeatureSwitch">
+                            <i class="bi bi-twitch text-primary me-1" style="color: #9146FF !important;"></i> Twitch Live &amp; Clips
+                        </label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="youtubeFeatureSwitch" @bind="formYouTubeEnabled">
+                        <label class="form-check-label text-light fw-semibold" for="youtubeFeatureSwitch">
+                            <i class="bi bi-youtube text-danger me-1" style="color: #FF0000 !important;"></i> YouTube Vidéos
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Boutons d'action -->
+            <div class="col-12 d-flex justify-content-end gap-2 mt-2">
+                @if (isEditing)
+                {
+                    <button class="btn btn-outline-secondary" @onclick="CancelEdit">Annuler</button>
+                }
+                <button class="btn btn-warning text-dark fw-bold d-flex align-items-center gap-2" @onclick="SavePermissionAsync">
+                    <i class="bi bi-floppy"></i>
+                    @(isEditing ? "Mettre à jour" : "Attribuer les accès")
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Liste des permissions accordées -->
+    <div class="card p-4 shadow-sm border-secondary">
+        <h5 class="fw-bold mb-3">
+            <i class="bi bi-people-fill me-2 text-info"></i>Administrateurs délégués par serveur
+        </h5>
+
+        @if (permissions.Count == 0)
+        {
+            <div class="text-center py-4 text-secondary">
+                <i class="bi bi-shield-x fs-2 d-block mb-2"></i>
+                <p class="mb-0">Aucun administrateur délégué pour le moment. Seul le Super Administrateur a accès aux fonctionnalités.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead>
+                        <tr class="text-secondary small">
+                            <th>Serveur Discord</th>
+                            <th>Utilisateur Discord</th>
+                            <th>Modules autorisés</th>
+                            <th>Date d'ajout</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var perm in permissions)
+                        {
+                            var guild = ulong.TryParse(perm.GuildId, out var gId) ? DiscordClient.GetGuild(gId) : null;
+                            var guildName = guild?.Name ?? perm.GuildId;
+                            var hasTwitch = (perm.FeatureFlags & GuildFeatureFlagsDto.Twitch) == GuildFeatureFlagsDto.Twitch;
+                            var hasYouTube = (perm.FeatureFlags & GuildFeatureFlagsDto.YouTube) == GuildFeatureFlagsDto.YouTube;
+
+                            <tr>
+                                <td>
+                                    <div class="fw-bold">@guildName</div>
+                                    <code class="text-secondary small">@perm.GuildId</code>
+                                </td>
+                                <td>
+                                    <code class="text-light">@perm.UserId</code>
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-1">
+                                        @if (hasTwitch)
+                                        {
+                                            <span class="badge bg-primary" style="background-color: #9146FF !important;">
+                                                <i class="bi bi-twitch me-1"></i> Twitch
+                                            </span>
+                                        }
+                                        @if (hasYouTube)
+                                        {
+                                            <span class="badge bg-danger" style="background-color: #CC0000 !important;">
+                                                <i class="bi bi-youtube me-1"></i> YouTube
+                                            </span>
+                                        }
+                                        @if (!hasTwitch && !hasYouTube)
+                                        {
+                                            <span class="badge bg-secondary">Aucun</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="small text-secondary">
+                                        <t>@perm.CreatedAt.ToString("dd/MM/yyyy HH:mm")</t>
+                                    </span>
+                                </td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-secondary" title="Modifier" @onclick="() => EditPermission(perm)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" title="Supprimer" @onclick="() => DeletePermissionAsync(perm)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<GuildAdminPermissionDto> permissions = [];
+    private string? feedbackMessage;
+    private bool isSuccessFeedback = true;
+
+    private bool isEditing = false;
+    private int editingId = 0;
+    private string formGuildId = string.Empty;
+    private string formUserId = string.Empty;
+    private bool formTwitchEnabled = true;
+    private bool formYouTubeEnabled = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPermissionsAsync();
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        var result = await PermissionService.GetAllPermissionsAsync();
+        permissions = result.ToList();
+    }
+
+    private void EditPermission(GuildAdminPermissionDto perm)
+    {
+        isEditing = true;
+        editingId = perm.Id;
+        formGuildId = perm.GuildId;
+        formUserId = perm.UserId;
+        formTwitchEnabled = (perm.FeatureFlags & GuildFeatureFlagsDto.Twitch) == GuildFeatureFlagsDto.Twitch;
+        formYouTubeEnabled = (perm.FeatureFlags & GuildFeatureFlagsDto.YouTube) == GuildFeatureFlagsDto.YouTube;
+    }
+
+    private void CancelEdit()
+    {
+        isEditing = false;
+        editingId = 0;
+        formGuildId = string.Empty;
+        formUserId = string.Empty;
+        formTwitchEnabled = true;
+        formYouTubeEnabled = true;
+    }
+
+    private async Task SavePermissionAsync()
+    {
+        var cleanGuildId = formGuildId.Trim();
+        var cleanUserId = formUserId.Trim();
+
+        if (string.IsNullOrWhiteSpace(cleanGuildId) || !ulong.TryParse(cleanGuildId, out var parsedGuildId) || parsedGuildId == 0)
+        {
+            feedbackMessage = "Veuillez sélectionner ou renseigner un identifiant numérique de serveur Discord valide (ex: 123456789012345678).";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(cleanUserId) || !ulong.TryParse(cleanUserId, out var parsedUserId) || parsedUserId == 0)
+        {
+            feedbackMessage = "L'identifiant Discord User ID doit être un nombre valide (ex: 116893981526196227).";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        var flags = GuildFeatureFlagsDto.None;
+        if (formTwitchEnabled) flags |= GuildFeatureFlagsDto.Twitch;
+        if (formYouTubeEnabled) flags |= GuildFeatureFlagsDto.YouTube;
+
+        if (flags == GuildFeatureFlagsDto.None)
+        {
+            feedbackMessage = "Vous devez activer au moins un module (Twitch ou YouTube) pour cet administrateur.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        try
+        {
+            await PermissionService.UpsertPermissionAsync(cleanGuildId, cleanUserId, flags);
+            feedbackMessage = $"Permissions pour l'utilisateur {cleanUserId} sur le serveur {cleanGuildId} enregistrées avec succès !";
+            isSuccessFeedback = true;
+            CancelEdit();
+            await LoadPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            feedbackMessage = $"Erreur lors de l'enregistrement : {ex.Message}";
+            isSuccessFeedback = false;
+        }
+    }
+
+    private async Task DeletePermissionAsync(GuildAdminPermissionDto perm)
+    {
+        try
+        {
+            await PermissionService.RemovePermissionAsync(perm.Id);
+            feedbackMessage = $"Permission supprimée pour l'utilisateur {perm.UserId} sur le serveur {perm.GuildId}.";
+            isSuccessFeedback = true;
+            if (isEditing && editingId == perm.Id)
+            {
+                CancelEdit();
+            }
+            await LoadPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            feedbackMessage = $"Erreur lors de la suppression : {ex.Message}";
+            isSuccessFeedback = false;
+        }
+    }
+}

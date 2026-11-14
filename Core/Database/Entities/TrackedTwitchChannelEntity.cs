@@ -4,6 +4,7 @@ public class TrackedTwitchChannelEntity
 {
     public int Id { get; set; }
     public int TwitchSettingsId { get; set; }
+    public string GuildId { get; set; } = string.Empty;
     public string TwitchUsername { get; set; } = string.Empty;
     public string DiscordChannelId { get; set; } = string.Empty;
     public string CustomMessage { get; set; } = string.Empty;
