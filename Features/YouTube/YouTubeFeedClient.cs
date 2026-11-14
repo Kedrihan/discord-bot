@@ -192,6 +192,8 @@ public partial class YouTubeFeedClient(
 
             using var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
             request.Headers.UserAgent.Add(new ProductInfoHeaderValue("Mozilla", "5.0"));
+            // Évite la redirection RGPD vers consent.youtube.com en Europe
+            request.Headers.TryAddWithoutValidation("Cookie", "SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmZyIAEaBgiA_LyaBg");
 
             using var response = await httpClient.SendAsync(request, cts.Token);
             if (!response.IsSuccessStatusCode)
