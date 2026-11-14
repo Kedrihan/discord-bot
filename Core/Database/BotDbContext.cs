@@ -14,6 +14,10 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
     public DbSet<TwitchClipHistoryEntity> TwitchClips => Set<TwitchClipHistoryEntity>();
     public DbSet<TwitchInitializedBroadcasterEntity> TwitchInitializedBroadcasters => Set<TwitchInitializedBroadcasterEntity>();
     public DbSet<TwitchActiveStreamEntity> TwitchActiveStreams => Set<TwitchActiveStreamEntity>();
+    public DbSet<YouTubeSettingsEntity> YouTubeSettings => Set<YouTubeSettingsEntity>();
+    public DbSet<TrackedYouTubeChannelEntity> TrackedYouTubeChannels => Set<TrackedYouTubeChannelEntity>();
+    public DbSet<YouTubeVideoHistoryEntity> YouTubeVideoHistory => Set<YouTubeVideoHistoryEntity>();
+    public DbSet<YouTubeInitializedChannelEntity> YouTubeInitializedChannels => Set<YouTubeInitializedChannelEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -101,6 +105,44 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
         {
             entity.HasKey(e => e.TwitchUsername);
             entity.Property(e => e.StartedAt)
+                .HasConversion(
+                    v => v.ToUnixTimeMilliseconds(),
+                    v => DateTimeOffset.FromUnixTimeMilliseconds(v));
+        });
+
+        // YouTubeSettings & TrackedYouTubeChannels
+        modelBuilder.Entity<YouTubeSettingsEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasMany(e => e.Channels)
+                .WithOne(c => c.YouTubeSettings)
+                .HasForeignKey(c => c.YouTubeSettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TrackedYouTubeChannelEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ChannelId);
+        });
+
+        // YouTubeVideoHistory
+        modelBuilder.Entity<YouTubeVideoHistoryEntity>(entity =>
+        {
+            entity.HasKey(e => e.VideoId);
+            entity.HasIndex(e => e.ChannelId);
+            entity.HasIndex(e => e.DiscoveredAt);
+            entity.Property(e => e.DiscoveredAt)
+                .HasConversion(
+                    v => v.ToUnixTimeMilliseconds(),
+                    v => DateTimeOffset.FromUnixTimeMilliseconds(v));
+        });
+
+        // YouTubeInitializedChannels
+        modelBuilder.Entity<YouTubeInitializedChannelEntity>(entity =>
+        {
+            entity.HasKey(e => e.ChannelId);
+            entity.Property(e => e.InitializedAt)
                 .HasConversion(
                     v => v.ToUnixTimeMilliseconds(),
                     v => DateTimeOffset.FromUnixTimeMilliseconds(v));

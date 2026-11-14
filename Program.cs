@@ -7,6 +7,7 @@ using Discord.WebSocket;
 using DiscordBot.Components;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Services;
+using DiscordBot.Features.YouTube;
 using DiscordBot.Services;
 using dotenv.net;
 using Microsoft.AspNetCore.Authentication;
@@ -166,6 +167,13 @@ builder.Services.AddHostedService<TwitchLiveScheduler>();
 builder.Services.AddSingleton<TwitchClipHistoryService>();
 builder.Services.AddSingleton<TwitchClipService>();
 builder.Services.AddHostedService<TwitchClipScheduler>();
+
+// Services dédiés aux notifications YouTube
+builder.Services.AddSingleton<YouTubeFeedClient>();
+builder.Services.AddSingleton<YouTubeConfigService>();
+builder.Services.AddSingleton<YouTubeHistoryService>();
+builder.Services.AddSingleton<YouTubeNotificationService>();
+builder.Services.AddHostedService<YouTubeScheduler>();
 
 // Configuration du client Discord
 builder.Services.AddSingleton(new DiscordSocketConfig

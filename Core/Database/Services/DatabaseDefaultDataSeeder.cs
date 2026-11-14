@@ -54,4 +54,12 @@ public static class DatabaseDefaultDataSeeder
         ClipCheckIntervalSeconds = 60,
         Channels = []
     };
+
+    public static YouTubeSettingsEntity CreateDefaultYouTubeSettings() => new()
+    {
+        Id = 1,
+        IsEnabled = true,
+        CheckIntervalMinutes = 15,
+        Channels = []
+    };
 }
