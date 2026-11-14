@@ -128,8 +128,6 @@ public class DatabaseInitializationService(
                 CONSTRAINT "PK_YouTubeVideoHistory" PRIMARY KEY ("GuildId", "VideoId")
             );
 
-            CREATE INDEX IF NOT EXISTS "IX_YouTubeVideoHistory_GuildId_ChannelId"
-                ON "YouTubeVideoHistory" ("GuildId", "ChannelId");
             CREATE INDEX IF NOT EXISTS "IX_YouTubeVideoHistory_DiscoveredAt"
                 ON "YouTubeVideoHistory" ("DiscoveredAt");
 
@@ -274,6 +272,11 @@ public class DatabaseInitializationService(
                 """;
             await context.Database.ExecuteSqlRawAsync(migrateYouTubeChannels, cancellationToken);
         }
+
+        // S'assurer que l'index composite existe même si la table vient d'être créée ou migrée
+        await context.Database.ExecuteSqlRawAsync(
+            "CREATE INDEX IF NOT EXISTS \"IX_YouTubeVideoHistory_GuildId_ChannelId\" ON \"YouTubeVideoHistory\" (\"GuildId\", \"ChannelId\");",
+            cancellationToken);
     }
 
     private static async Task<bool> ColumnExistsAsync(BotDbContext context, string tableName, string columnName, CancellationToken ct)
