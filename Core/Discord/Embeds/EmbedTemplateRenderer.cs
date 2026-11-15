@@ -158,11 +158,11 @@ public partial class EmbedTemplateRenderer(TimeProvider timeProvider)
     {
         if (string.IsNullOrEmpty(input)) return string.Empty;
 
-        var result = EveryoneMentionRegex().Replace(input, "@\u200beveryone");
-        result = HereMentionRegex().Replace(result, "@\u200bhere");
-        result = DiscordUserOrRoleMentionRegex().Replace(result, "<\u200b@$1");
+        var result = DiscordUserOrRoleMentionRegex().Replace(input, "<\u200b@$1");
         result = DiscordChannelMentionRegex().Replace(result, "<\u200b#");
         result = DiscordSlashCommandMentionRegex().Replace(result, "<\u200b/");
+        result = EveryoneMentionRegex().Replace(result, "@\u200beveryone");
+        result = HereMentionRegex().Replace(result, "@\u200bhere");
 
         return result;
     }
