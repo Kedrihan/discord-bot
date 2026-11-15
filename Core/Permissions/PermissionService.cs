@@ -1,6 +1,9 @@
+using System.Security.Claims;
+using Discord.WebSocket;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.DTO.Permissions;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Core.Permissions;
 

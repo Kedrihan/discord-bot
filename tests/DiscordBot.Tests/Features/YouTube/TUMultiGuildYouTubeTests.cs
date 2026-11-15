@@ -1,6 +1,9 @@
 using DiscordBot.DTO.YouTube;
 using DiscordBot.Features.YouTube;
 using DiscordBot.Tests.TestHelpers;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DiscordBot.Tests.Features.YouTube;
 

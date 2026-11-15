@@ -1,3 +1,9 @@
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text.Json;
+using Discord;
+using Discord.Interactions;
+using Discord.WebSocket;
 using DiscordBot.Components;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Services;
@@ -9,6 +15,14 @@ using DiscordBot.Features.MorningBriefing;
 using DiscordBot.Features.TechWatch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Features.YouTube;
+using dotenv.net;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
+using TwitchLib.EventSub.Websockets.Extensions;
 
 // Chargement automatique du fichier .env s'il existe
 DotEnv.Load(new DotEnvOptions(ignoreExceptions: true));

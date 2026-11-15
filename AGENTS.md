@@ -9,7 +9,7 @@ These rules are strict and must be followed by all developers and AI agents work
 - **NEVER push to the `production` branch autonomously.**
 - Only the user can explicitly request or approve a deployment/push to `production`.
 - All daily work and commits must be made on `main` (or feature branches).
-- **Co-authored commits:** All commits must include `Co-authored-by: gemini-code-assist[bot] <176961590+gemini-code-assist[bot]@users.noreply.github.com>` as a git trailer (also enforced locally via `.git/hooks/prepare-commit-msg`).
+- **Co-authored commits:** All commits must include `Co-authored-by: Gemini <gemini-code-assist@google.com>` as a git trailer (also enforced locally via `.git/hooks/prepare-commit-msg`).
 
 ---
 

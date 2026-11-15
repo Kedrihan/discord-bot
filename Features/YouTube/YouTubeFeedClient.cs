@@ -1,3 +1,9 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using DiscordBot.DTO.YouTube;
 
 namespace DiscordBot.Features.YouTube;

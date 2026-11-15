@@ -1,4 +1,6 @@
+using System.Text.Json;
 using DiscordBot.Core.Database.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Core.Database;
 

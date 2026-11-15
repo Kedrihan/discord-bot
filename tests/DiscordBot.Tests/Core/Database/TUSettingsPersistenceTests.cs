@@ -6,6 +6,8 @@ using DiscordBot.Features.MorningBriefing;
 using DiscordBot.Features.TechWatch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DiscordBot.Tests.Core.Database;
 

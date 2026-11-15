@@ -1,6 +1,14 @@
-﻿using DiscordBot.DTO.Twitch;
+﻿using System.Net;
+using System.Text.Json;
+using Discord.WebSocket;
+using DiscordBot.DTO.Twitch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
+using TwitchLib.EventSub.Websockets;
 
 namespace DiscordBot.Tests.Features.Twitch;
 

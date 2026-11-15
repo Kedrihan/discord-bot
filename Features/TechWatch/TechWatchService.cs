@@ -1,5 +1,9 @@
-﻿using DiscordBot.DTO.Common;
+﻿using System.Text.RegularExpressions;
+using Discord;
+using Discord.WebSocket;
+using DiscordBot.DTO.Common;
 using DiscordBot.DTO.TechWatch;
+using DiscordBot.Features.Twitch;
 
 namespace DiscordBot.Features.TechWatch;
 

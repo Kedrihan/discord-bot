@@ -1,7 +1,16 @@
-﻿using DiscordBot.Components.Pages;
+﻿using System.Net;
+using System.Reflection;
+using Discord.WebSocket;
+using DiscordBot.Components.Pages;
 using DiscordBot.DTO.Twitch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
+using FluentAssertions;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace DiscordBot.Tests.Features.Twitch;
 

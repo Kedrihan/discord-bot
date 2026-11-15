@@ -1,6 +1,7 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.DTO.Twitch;
+using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Features.Twitch;
 

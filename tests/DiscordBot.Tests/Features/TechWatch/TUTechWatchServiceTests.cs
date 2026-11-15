@@ -1,4 +1,5 @@
 ﻿using DiscordBot.Features.TechWatch;
+using FluentAssertions;
 
 namespace DiscordBot.Tests.Features.TechWatch;
 

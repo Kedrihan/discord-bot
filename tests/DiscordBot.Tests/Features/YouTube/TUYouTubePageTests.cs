@@ -1,4 +1,8 @@
+using System.Reflection;
 using DiscordBot.Components.Pages;
+using FluentAssertions;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components;
 
 namespace DiscordBot.Tests.Features.YouTube;
 
