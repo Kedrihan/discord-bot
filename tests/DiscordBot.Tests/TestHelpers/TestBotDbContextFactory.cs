@@ -1,6 +1,4 @@
 using DiscordBot.Core.Database;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Tests.TestHelpers;
 

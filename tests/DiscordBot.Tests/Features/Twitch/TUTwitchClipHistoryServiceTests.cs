@@ -1,8 +1,5 @@
 ﻿using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
-using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Time.Testing;
 
 namespace DiscordBot.Tests.Features.Twitch;
 

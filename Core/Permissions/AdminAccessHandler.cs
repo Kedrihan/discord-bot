@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Authorization;
-
 namespace DiscordBot.Core.Permissions;
 
 public class AdminAccessHandler(PermissionService permissionService) : AuthorizationHandler<AdminAccessRequirement>

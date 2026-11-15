@@ -2,7 +2,6 @@
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.Core.Database.Services;
 using DiscordBot.DTO.MorningBriefing;
-using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Features.MorningBriefing;
 

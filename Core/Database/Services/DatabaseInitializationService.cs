@@ -1,7 +1,3 @@
-using System.Data;
-using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
-
 namespace DiscordBot.Core.Database.Services;
 
 public class DatabaseInitializationService(

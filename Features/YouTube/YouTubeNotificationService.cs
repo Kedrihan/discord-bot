@@ -1,6 +1,3 @@
-using System.Text.RegularExpressions;
-using Discord;
-using Discord.WebSocket;
 using DiscordBot.DTO.YouTube;
 
 namespace DiscordBot.Features.YouTube;

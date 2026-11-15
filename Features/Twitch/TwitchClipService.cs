@@ -1,7 +1,4 @@
-﻿using System.Globalization;
-using Discord;
-using Discord.WebSocket;
-using DiscordBot.DTO.Twitch;
+﻿using DiscordBot.DTO.Twitch;
 
 namespace DiscordBot.Features.Twitch;
 

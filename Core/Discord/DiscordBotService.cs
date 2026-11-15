@@ -1,7 +1,3 @@
-using System.Reflection;
-using Discord;
-using Discord.Interactions;
-using Discord.WebSocket;
 using DiscordBot.Core.Database.Services;
 
 namespace DiscordBot.Core.Discord;

@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-using System.Xml.Linq;
-using DiscordBot.DTO.TechWatch;
+﻿using DiscordBot.DTO.TechWatch;
 
 namespace DiscordBot.Features.TechWatch;
 

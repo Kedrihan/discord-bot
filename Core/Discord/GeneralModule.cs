@@ -1,6 +1,3 @@
-using Discord;
-using Discord.Interactions;
-
 namespace DiscordBot.Core.Discord;
 
 public class GeneralModule : InteractionModuleBase<SocketInteractionContext>

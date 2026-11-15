@@ -1,7 +1,4 @@
-﻿using System.Text;
-using DiscordBot.DTO.TechWatch;
-using Google.GenAI;
-using Google.GenAI.Types;
+﻿using DiscordBot.DTO.TechWatch;
 
 namespace DiscordBot.Features.TechWatch;
 

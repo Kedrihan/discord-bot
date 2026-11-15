@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-
-namespace DiscordBot.DTO.Twitch;
+﻿namespace DiscordBot.DTO.Twitch;
 
 public record TwitchTokenResponseDto(
     [property: JsonPropertyName("access_token")] string AccessToken,

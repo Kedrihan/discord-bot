@@ -1,7 +1,4 @@
-using System.Net;
 using DiscordBot.Features.YouTube;
-using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DiscordBot.Tests.Features.YouTube;
 

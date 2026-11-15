@@ -1,6 +1,4 @@
-﻿using System.Globalization;
-using System.Text.Json;
-using DiscordBot.DTO.MorningBriefing;
+﻿using DiscordBot.DTO.MorningBriefing;
 
 namespace DiscordBot.Features.MorningBriefing;
 

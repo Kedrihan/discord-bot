@@ -1,8 +1,4 @@
-﻿using System.Reflection;
-using DiscordBot.Components.Pages;
-using FluentAssertions;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Components;
+﻿using DiscordBot.Components.Pages;
 
 namespace DiscordBot.Tests.Core.Security;
 
