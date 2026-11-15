@@ -1,10 +1,10 @@
-﻿using DiscordBot.Services;
+﻿using DiscordBot.Features.TechWatch;
 using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-namespace DiscordBot.Tests;
+namespace DiscordBot.Tests.Features.TechWatch;
 
 [TestFixture]
 public class TUSentArticlesHistoryServiceTests

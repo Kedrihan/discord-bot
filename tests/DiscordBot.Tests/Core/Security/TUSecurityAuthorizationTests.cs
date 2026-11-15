@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 
-namespace DiscordBot.Tests;
+namespace DiscordBot.Tests.Core.Security;
 
 [TestFixture]
 public class TUSecurityAuthorizationTests

@@ -1,9 +1,9 @@
 ﻿using System.Text;
-using DiscordBot.DTO;
+using DiscordBot.DTO.TechWatch;
 using Google.GenAI;
 using Google.GenAI.Types;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.TechWatch;
 
 public class GeminiSummarizerService(
     ILogger<GeminiSummarizerService> logger,

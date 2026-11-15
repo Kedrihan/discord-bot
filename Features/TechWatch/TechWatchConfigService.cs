@@ -1,10 +1,10 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.Core.Database.Services;
-using DiscordBot.DTO;
+using DiscordBot.DTO.TechWatch;
 using Microsoft.EntityFrameworkCore;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.TechWatch;
 
 public class TechWatchConfigService(
     IDbContextFactory<BotDbContext> dbContextFactory,

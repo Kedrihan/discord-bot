@@ -1,5 +1,10 @@
-using DiscordBot.DTO;
-using DiscordBot.Services;
+using DiscordBot.DTO.Common;
+using DiscordBot.DTO.MorningBriefing;
+using DiscordBot.DTO.TechWatch;
+using DiscordBot.DTO.Twitch;
+using DiscordBot.Features.MorningBriefing;
+using DiscordBot.Features.TechWatch;
+using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;

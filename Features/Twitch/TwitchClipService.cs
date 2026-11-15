@@ -1,9 +1,9 @@
 ﻿using System.Globalization;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Twitch;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchClipService(
     DiscordSocketClient discordClient,

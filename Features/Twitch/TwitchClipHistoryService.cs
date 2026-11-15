@@ -2,7 +2,7 @@
 using DiscordBot.Core.Database.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchClipHistoryService(
     IDbContextFactory<BotDbContext> dbContextFactory,

@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
-using DiscordBot.DTO;
+using DiscordBot.DTO.YouTube;
 
 namespace DiscordBot.Features.YouTube;
 

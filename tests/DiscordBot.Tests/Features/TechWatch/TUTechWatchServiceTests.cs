@@ -1,7 +1,7 @@
-﻿using DiscordBot.Services;
+﻿using DiscordBot.Features.TechWatch;
 using FluentAssertions;
 
-namespace DiscordBot.Tests;
+namespace DiscordBot.Tests.Features.TechWatch;
 
 [TestFixture]
 public class TUTechWatchServiceTests

@@ -4,7 +4,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Core.Database.Services;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Core.Discord;
 
 public class DiscordBotService(
     DiscordSocketClient client,

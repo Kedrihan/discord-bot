@@ -2,7 +2,7 @@ using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.TechWatch;
 
 public class SentArticlesHistoryService(
     IDbContextFactory<BotDbContext> dbContextFactory,

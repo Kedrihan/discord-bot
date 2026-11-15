@@ -1,4 +1,4 @@
-namespace DiscordBot.DTO;
+﻿namespace DiscordBot.DTO.Common;
 
 public record CalendarScheduleDto(
     bool IsEnabled,

@@ -1,7 +1,7 @@
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.Core.Database.Services;
-using DiscordBot.DTO;
+using DiscordBot.DTO.YouTube;
 using Microsoft.EntityFrameworkCore;
 
 namespace DiscordBot.Features.YouTube;

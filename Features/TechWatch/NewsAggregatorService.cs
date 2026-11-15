@@ -1,8 +1,8 @@
 ﻿using System.Text.Json;
 using System.Xml.Linq;
-using DiscordBot.DTO;
+using DiscordBot.DTO.TechWatch;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.TechWatch;
 
 public class NewsAggregatorService(
     HttpClient httpClient,

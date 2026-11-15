@@ -1,4 +1,4 @@
-namespace DiscordBot.DTO;
+﻿namespace DiscordBot.DTO.MorningBriefing;
 
 public class HourlyWeatherSlotDto
 {
@@ -9,6 +9,6 @@ public class HourlyWeatherSlotDto
     public double WindSpeed { get; set; }
     public double WindGusts { get; set; }
     public int WeatherCode { get; set; }
-    public string WeatherDescription { get; set; } = "Ciel dégagé";
-    public string WeatherEmoji { get; set; } = "☀️";
+    public string WeatherDescription { get; set; } = "Ciel dÃ©gagÃ©";
+    public string WeatherEmoji { get; set; } = "â˜€ï¸";
 }

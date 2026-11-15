@@ -1,11 +1,13 @@
 ﻿using System.Text.Json;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Common;
+using DiscordBot.DTO.MorningBriefing;
+using DiscordBot.Features.TechWatch;
 using Google.GenAI;
 using Google.GenAI.Types;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.MorningBriefing;
 
 public class MorningBriefingService(
     DiscordSocketClient discordClient,

@@ -1,14 +1,14 @@
 ﻿using System.Net;
 using Discord.WebSocket;
-using DiscordBot.DTO;
-using DiscordBot.Services;
+using DiscordBot.DTO.Twitch;
+using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-namespace DiscordBot.Tests;
+namespace DiscordBot.Tests.Features.Twitch;
 
 [TestFixture]
 public class TUTwitchClipServiceTests

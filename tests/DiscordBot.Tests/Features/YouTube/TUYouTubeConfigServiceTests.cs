@@ -1,4 +1,4 @@
-using DiscordBot.DTO;
+using DiscordBot.DTO.YouTube;
 using DiscordBot.Features.YouTube;
 using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;

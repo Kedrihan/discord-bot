@@ -1,4 +1,4 @@
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchLiveScheduler(
     TwitchConfigService configService,

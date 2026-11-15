@@ -1,9 +1,9 @@
-﻿using DiscordBot.DTO;
+﻿using DiscordBot.DTO.Twitch;
 using TwitchLib.EventSub.Core.EventArgs.Stream;
 using TwitchLib.EventSub.Websockets;
 using TwitchLib.EventSub.Websockets.Core.EventArgs;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchEventSubService(
     EventSubWebsocketClient websocketClient,

@@ -1,4 +1,4 @@
-using DiscordBot.DTO;
+using DiscordBot.DTO.Common;
 
 namespace DiscordBot.Core.Database.Entities;
 

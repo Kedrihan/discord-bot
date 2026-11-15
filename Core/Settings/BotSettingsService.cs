@@ -1,4 +1,4 @@
-namespace DiscordBot.Services;
+namespace DiscordBot.Core.Settings;
 
 public class BotSettings
 {

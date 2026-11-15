@@ -1,5 +1,5 @@
 using DiscordBot.Core.Database.Entities;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Common;
 
 namespace DiscordBot.Core.Database.Services;
 

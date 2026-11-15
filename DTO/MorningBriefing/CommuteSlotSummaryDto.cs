@@ -1,4 +1,4 @@
-namespace DiscordBot.DTO;
+﻿namespace DiscordBot.DTO.MorningBriefing;
 
 public class CommuteSlotSummaryDto
 {
@@ -11,5 +11,5 @@ public class CommuteSlotSummaryDto
     public double MaxWindSpeed { get; set; }
     public double MaxWindGusts { get; set; }
     public string MainCondition { get; set; } = string.Empty;
-    public string MainEmoji { get; set; } = "⛅";
+    public string MainEmoji { get; set; } = "â›…";
 }

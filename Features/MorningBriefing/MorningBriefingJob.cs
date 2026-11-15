@@ -1,6 +1,7 @@
-﻿using DiscordBot.DTO;
+﻿using DiscordBot.Core.Scheduling;
+using DiscordBot.DTO.Common;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.MorningBriefing;
 
 public class MorningBriefingJob(
     MorningBriefingConfigService configService,

@@ -1,4 +1,4 @@
-namespace DiscordBot.DTO;
+﻿namespace DiscordBot.DTO.YouTube;
 
 public record YouTubeVideoHistoryItemDto(
     string VideoId,

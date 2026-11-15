@@ -1,10 +1,10 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
 using DiscordBot.Core.Database.Services;
-using DiscordBot.DTO;
+using DiscordBot.DTO.MorningBriefing;
 using Microsoft.EntityFrameworkCore;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.MorningBriefing;
 
 public class MorningBriefingConfigService(
     IDbContextFactory<BotDbContext> dbContextFactory,

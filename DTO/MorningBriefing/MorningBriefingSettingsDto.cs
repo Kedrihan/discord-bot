@@ -1,4 +1,6 @@
-namespace DiscordBot.DTO;
+﻿using DiscordBot.DTO.Common;
+
+namespace DiscordBot.DTO.MorningBriefing;
 
 public class MorningBriefingSettingsDto
 {
@@ -18,11 +20,11 @@ public class MorningBriefingSettingsDto
     public string TargetId { get; set; } = "116893981526196227";
 
     // Localisation
-    public string Address { get; set; } = "19 Impasse de Vérone, 69150 Décines-Charpieu";
+    public string Address { get; set; } = "19 Impasse de VÃ©rone, 69150 DÃ©cines-Charpieu";
     public double Latitude { get; set; } = 45.7678;
     public double Longitude { get; set; } = 4.9619;
 
-    // Créneaux horaires de trajet
+    // CrÃ©neaux horaires de trajet
     public int MorningStartHour { get; set; } = 7;
     public int MorningEndHour { get; set; } = 8;
     public int EveningStartHour { get; set; } = 17;

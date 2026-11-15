@@ -1,9 +1,9 @@
 ﻿using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Twitch;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchLiveService(
     DiscordSocketClient discordClient,

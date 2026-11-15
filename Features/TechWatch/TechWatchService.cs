@@ -1,9 +1,10 @@
 ﻿using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Common;
+using DiscordBot.DTO.TechWatch;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.TechWatch;
 
 public class TechWatchService(
     DiscordSocketClient discordClient,

@@ -1,6 +1,6 @@
-﻿using DiscordBot.DTO;
+﻿using DiscordBot.DTO.Common;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Core.Scheduling;
 
 public interface ICalendarJob
 {

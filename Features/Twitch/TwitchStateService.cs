@@ -1,9 +1,9 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
-using DiscordBot.DTO;
+using DiscordBot.DTO.Twitch;
 using Microsoft.EntityFrameworkCore;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.Twitch;
 
 public class TwitchStateService(
     IDbContextFactory<BotDbContext> dbContextFactory,

@@ -1,5 +1,5 @@
-using DiscordBot.DTO;
-using DiscordBot.Services;
+using DiscordBot.DTO.Twitch;
+using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;

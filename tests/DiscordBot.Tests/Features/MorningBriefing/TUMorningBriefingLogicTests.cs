@@ -1,8 +1,8 @@
-﻿using DiscordBot.DTO;
-using DiscordBot.Services;
+﻿using DiscordBot.DTO.MorningBriefing;
+using DiscordBot.Features.MorningBriefing;
 using FluentAssertions;
 
-namespace DiscordBot.Tests;
+namespace DiscordBot.Tests.Features.MorningBriefing;
 
 [TestFixture]
 public class TUMorningBriefingLogicTests

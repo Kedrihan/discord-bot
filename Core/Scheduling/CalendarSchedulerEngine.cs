@@ -1,6 +1,6 @@
 ﻿using System.Collections.Concurrent;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Core.Scheduling;
 
 public class CalendarSchedulerEngine(
     IEnumerable<ICalendarJob> jobs,

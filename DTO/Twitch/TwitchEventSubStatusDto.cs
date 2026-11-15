@@ -1,4 +1,4 @@
-namespace DiscordBot.DTO;
+﻿namespace DiscordBot.DTO.Twitch;
 
 public enum TwitchEventSubStatusDto
 {

@@ -1,8 +1,8 @@
 ﻿using System.Globalization;
 using System.Text.Json;
-using DiscordBot.DTO;
+using DiscordBot.DTO.MorningBriefing;
 
-namespace DiscordBot.Services;
+namespace DiscordBot.Features.MorningBriefing;
 
 public class OpenMeteoService(HttpClient httpClient, ILogger<OpenMeteoService> logger)
 {
