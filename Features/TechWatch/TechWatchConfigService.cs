@@ -1,6 +1,5 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
-using DiscordBot.Core.Database.Services;
 using DiscordBot.DTO.TechWatch;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,7 +44,7 @@ public class TechWatchConfigService(
         var entity = await context.TechWatchSettings.FindAsync([1], cancellationToken);
         if (entity == null)
         {
-            entity = DatabaseDefaultDataSeeder.CreateDefaultTechWatchSettings();
+            entity = new TechWatchSettingsEntity { Id = 1 };
             context.TechWatchSettings.Add(entity);
         }
 

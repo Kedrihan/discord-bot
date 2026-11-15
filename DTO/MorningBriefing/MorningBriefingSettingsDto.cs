@@ -17,14 +17,14 @@ public class MorningBriefingSettingsDto
 
     // Destinataire
     public DestinationTypeDto DestinationType { get; set; } = DestinationTypeDto.UserDm;
-    public string TargetId { get; set; } = "116893981526196227";
+    public string TargetId { get; set; } = string.Empty;
 
     // Localisation
-    public string Address { get; set; } = "19 Impasse de VÃ©rone, 69150 DÃ©cines-Charpieu";
-    public double Latitude { get; set; } = 45.7678;
-    public double Longitude { get; set; } = 4.9619;
+    public string Address { get; set; } = string.Empty;
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
 
-    // CrÃ©neaux horaires de trajet
+    // Créneaux horaires de trajet
     public int MorningStartHour { get; set; } = 7;
     public int MorningEndHour { get; set; } = 8;
     public int EveningStartHour { get; set; } = 17;

@@ -1,6 +1,5 @@
 ﻿using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
-using DiscordBot.Core.Database.Services;
 using DiscordBot.DTO.MorningBriefing;
 using Microsoft.EntityFrameworkCore;
 
@@ -45,7 +44,7 @@ public class MorningBriefingConfigService(
         var entity = await context.MorningBriefingSettings.FindAsync([1], cancellationToken);
         if (entity == null)
         {
-            entity = DatabaseDefaultDataSeeder.CreateDefaultMorningBriefingSettings();
+            entity = new MorningBriefingSettingsEntity { Id = 1 };
             context.MorningBriefingSettings.Add(entity);
         }
 

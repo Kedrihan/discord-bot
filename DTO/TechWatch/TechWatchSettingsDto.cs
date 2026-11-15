@@ -12,9 +12,9 @@ public class TechWatchSettingsDto
 
     // Destinataire
     public DestinationTypeDto DestinationType { get; set; } = DestinationTypeDto.UserDm;
-    public string TargetId { get; set; } = "116893981526196227";
+    public string TargetId { get; set; } = string.Empty;
 
-    // ThÃ©matiques / Sujets
+    // Thématiques / Sujets
     public List<string> Topics { get; set; } =
     [
         "dotnet", "csharp", "vue", "javascript", "typescript",

@@ -1,6 +1,5 @@
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Entities;
-using DiscordBot.Core.Database.Services;
 using DiscordBot.DTO.YouTube;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,7 +52,7 @@ public class YouTubeConfigService(
 
         if (entity == null)
         {
-            entity = DatabaseDefaultDataSeeder.CreateDefaultYouTubeSettings();
+            entity = new YouTubeSettingsEntity { Id = 1 };
             context.YouTubeSettings.Add(entity);
         }
 
