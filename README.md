@@ -1,38 +1,100 @@
 # Bot Discord en .NET 10 & Dashboard Web Blazor (Docker)
 
-Ce projet combine un **Bot Discord** et un **Dashboard d'administration Web en Blazor (100% C#)** dans un seul et même conteneur Docker léger, prêt à être hébergé gratuitement 24/7 sur **Oracle Cloud (Always Free)**.
+Ce projet combine un **Bot Discord** (avec modules automatisés : Veille Tech IA, Morning Briefing Météo/Vélo, Twitch & YouTube) et un **Dashboard d'administration Web en Blazor Server (100% C#)** sécurisé par Discord OAuth2, le tout dans un seul conteneur Docker léger prêt à être hébergé 24/7 (ex. **Oracle Cloud Always Free**).
 
 ---
 
-## 📁 Fonctionnalités & Structure
+## ✨ Fonctionnalités
 
-* **Bot Discord (.NET 10)** :
-  * Commande Slash `/ping` avec Embed Discord stylisé.
-  * Enregistrement automatique des commandes sur votre serveur de dev ou globalement.
-* **Dashboard Web Blazor (Port 8080)** :
-  * Accessibilité : `http://localhost:8080`
-  * Statut en direct : Connexion, latence API WebSocket, Uptime, liste des serveurs connectés.
-  * Page `/settings` : Configuration de l'activité du bot, préfixe, etc., modifiable à chaud !
+* **Bot Discord (.NET 10 / Discord.Net)** :
+  * Commande Slash `/ping` avec Embed Discord stylisé et latence WebSocket.
+  * Enregistrement automatique des commandes Slash sur un serveur de développement (`DISCORD_GUILD_ID`) ou globalement.
+* **Veille Technologique IA (`Features/TechWatch`)** :
+  * Agrégation de flux d'actualités et déduplication via historique SQLite.
+  * Synthèse automatique des articles par IA avec **Google Gemini** (`Google.GenAI`).
+  * Exécution planifiée via le moteur calendaire unifié (`CalendarSchedulerEngine`).
+* **Morning Briefing Météo & Vélo (`Features/MorningBriefing`)** :
+  * Récupération des prévisions horaires via **Open-Meteo**.
+  * Analyse des créneaux de trajet et génération d'un verdict vélo quotidien envoyé sur Discord.
+* **Notifications Twitch Live & Clips (`Features/Twitch`)** :
+  * Détection des lancements de live en temps réel via **Twitch EventSub WebSockets** et planification périodique.
+  * Suivi et publication automatique des nouveaux clips avec historique anti-doublons.
+* **Notifications YouTube (`Features/YouTube`)** :
+  * Surveillance des chaînes YouTube suivies via flux RSS/Atom et publication automatique des nouvelles vidéos.
+* **Dashboard Web Blazor Server (Port 8080)** :
+  * **Authentification & RBAC** : Connexion via **Discord OAuth2** (`/login`, `/logout`, `/signin-discord`) avec gestion des rôles (`SuperAdmin` via `DISCORD_ADMIN_USER_ID` et permissions par serveur).
+  * `/` : Page d'accueil et connexion.
+  * `/dashboard` : Statut en direct (connexion, latence API WebSocket, uptime, serveurs connectés).
+  * `/briefing` : Configuration du Morning Briefing Météo / Vélo.
+  * `/twitch` : Gestion des chaînes Twitch suivies et paramètres Live / Clips.
+  * `/youtube` : Gestion des chaînes YouTube suivies et paramètres de notification.
+  * `/settings` : Paramètres globaux du bot (activité, statut, veille technologique, etc.) modifiables à chaud.
+  * `/permissions` : Gestion des permissions d'administration par serveur Discord.
+* **Persistance & Base de données** :
+  * Base de données **SQLite** avec **Entity Framework Core 10** (`data/bot.db`), initialisée automatiquement au démarrage.
 * **Docker & Docker Compose** :
-  * Image ASP.NET Core .NET 10 optimisée (multi-plateforme x64 et ARM64).
-  * Redémarrage automatique garanti (`restart: unless-stopped`).
+  * Image ASP.NET Core .NET 10 multi-étape avec utilisateur non-root (`$APP_UID`).
+  * Redémarrage automatique (`restart: unless-stopped`) et volume persistant `./data:/app/data`.
+
+---
+
+## 🏗️ Architecture du projet
+
+Le projet suit une architecture **Vertical Slices / Feature-Driven** :
+
+```text
+├── Core/                # Infrastructure transversale (Database, Discord, Permissions, Scheduling, Settings)
+├── Features/            # Tranches verticales métier (MorningBriefing, TechWatch, Twitch, YouTube)
+├── DTO/                 # Projet dédié aux DTOs et modèles de configuration (DTO.csproj)
+├── Components/          # Interface Web Blazor Server (Layout, Pages)
+├── tests/
+│   └── DiscordBot.Tests/ # Tests unitaires NUnit + FluentAssertions (miroir de Core/ et Features/)
+├── data/                # Base SQLite (bot.db) montée en volume Docker
+├── Program.cs           # Point d'entrée, DI, OAuth2, EF Core et pipeline ASP.NET Core
+├── Dockerfile           # Build multi-stage .NET 10
+└── docker-compose.yml   # Orchestration locale / serveur
+```
+
+---
+
+## ⚙️ Configuration (`.env`)
+
+Copiez `.env.example` vers `.env` et renseignez les variables nécessaires :
+
+```env
+# Requis : Token du bot Discord (https://discord.com/developers/applications)
+DISCORD_TOKEN=votre_token_secret_ici
+
+# Optionnel : ID de serveur pour enregistrer les commandes Slash instantanément en dev
+DISCORD_GUILD_ID=
+
+# Authentification Discord OAuth2 pour sécuriser le Dashboard
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_ADMIN_USER_ID=
+
+# Clé API Google Gemini pour la synthèse IA (https://aistudio.google.com/apikey)
+GEMINI_API_KEY=
+
+# Identifiants API Twitch pour les alertes Live & Clips (https://dev.twitch.tv/console/apps)
+TWITCH_CLIENT_ID=
+TWITCH_CLIENT_SECRET=
+# Optionnel : Jeton utilisateur OAuth pour EventSub WebSocket en temps réel
+TWITCH_USER_ACCESS_TOKEN=
+```
 
 ---
 
 ## 🚀 Démarrage avec Docker
 
-1. Renseignez votre token dans `.env` :
-   ```env
-   DISCORD_TOKEN=votre_token_secret_ici
-   DISCORD_GUILD_ID=123456789012345678 # Optionnel
-   ```
+1. Créez votre fichier `.env` à partir de `.env.example` et renseignez vos clés.
 
 2. Lancez le conteneur :
    ```bash
    docker compose up -d --build
    ```
 
-3. Ouvrez le dashboard dans votre navigateur :
+3. Ouvrez le dashboard dans votre navigateur (exposé sur `127.0.0.1:8080` par défaut dans `docker-compose.yml`, fuseau `TZ=Europe/Paris`) :
    👉 **http://localhost:8080**
 
 4. Voir les logs du bot :
@@ -44,3 +106,23 @@ Ce projet combine un **Bot Discord** et un **Dashboard d'administration Web en B
    ```bash
    docker compose down
    ```
+
+---
+
+## 🛠️ Développement local, Tests & CI
+
+* **Prérequis** : SDK **.NET 10**.
+* **Lancer l'application en local** :
+  ```bash
+  dotnet run --project DiscordBot.csproj
+  ```
+* **Compiler en Release** :
+  ```bash
+  dotnet build DiscordBot.csproj --configuration Release
+  ```
+* **Exécuter les tests unitaires (NUnit)** :
+  ```bash
+  dotnet test tests/DiscordBot.Tests/DiscordBot.Tests.csproj
+  ```
+* **CI/CD** : Le workflow GitHub Actions (`.github/workflows/ci.yml`) exécute la compilation Release, les tests unitaires NUnit et l'audit des vulnérabilités NuGet sur la branche `main`.
+* **Règles de développement** : Consultez [AGENTS.md](AGENTS.md) pour les conventions de code, l'architecture et le pipeline `/forge`.

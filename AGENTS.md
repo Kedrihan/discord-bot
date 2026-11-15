@@ -139,3 +139,14 @@ All developers and agents must strictly follow the **Vertical Slices / Feature-D
   3. **Security Audit:** Vulnerability scanning (CVEs) and defensive review (Cybersecurity subagent).
 - All subagents must use the **Flash** model (`flash` or `inherit`) with dynamic reflection levels.
 - For **micro-tasks** (typos, 2-line styling tweaks, static string updates), apply changes directly with build and test validation without launching the full `/forge` pipeline.
+
+---
+
+### 12. Documentation & README Maintenance
+
+- **Always keep `README.md` up to date** whenever changes affect user-facing or developer-facing project documentation.
+- Specifically, update `README.md` whenever you add, modify, or remove:
+  - Features (`Features/`), Discord Slash commands, or Blazor dashboard pages/routes (`Components/Pages/`).
+  - Environment variables (`.env.example`), Docker configuration (`Dockerfile`, `docker-compose.yml`), or database/persistence setup.
+  - Project architecture, build/test commands, or CI workflows.
+- Verify that documented routes, commands, environment variable names, and file paths match the actual codebase.
