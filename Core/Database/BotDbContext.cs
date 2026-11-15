@@ -19,6 +19,7 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
     public DbSet<YouTubeVideoHistoryEntity> YouTubeVideoHistory => Set<YouTubeVideoHistoryEntity>();
     public DbSet<YouTubeInitializedChannelEntity> YouTubeInitializedChannels => Set<YouTubeInitializedChannelEntity>();
     public DbSet<GuildAdminPermissionEntity> GuildAdminPermissions => Set<GuildAdminPermissionEntity>();
+    public DbSet<DiscordEmbedTemplateEntity> DiscordEmbedTemplates => Set<DiscordEmbedTemplateEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -158,6 +159,13 @@ public class BotDbContext(DbContextOptions<BotDbContext> options) : DbContext(op
                 .HasConversion(
                     v => v.ToUnixTimeMilliseconds(),
                     v => DateTimeOffset.FromUnixTimeMilliseconds(v));
+        });
+
+        // DiscordEmbedTemplates
+        modelBuilder.Entity<DiscordEmbedTemplateEntity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.TemplateType, e.GuildId, e.ChannelTargetId }).IsUnique();
         });
     }
 }

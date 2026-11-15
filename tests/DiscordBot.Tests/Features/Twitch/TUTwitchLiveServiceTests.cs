@@ -2,6 +2,8 @@
 using System.Reflection;
 using Discord.WebSocket;
 using DiscordBot.Components.Pages;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.Twitch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
@@ -694,6 +696,59 @@ public class TUTwitchLiveServiceTests
         // Assert
         firstFailed.Should().BeTrue();
         secondSucceeded.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task CreateStreamEmbedAsync_WithCustomTemplate_ShouldUseCustomizedFieldsAndColor()
+    {
+        // Arrange
+        var renderer = new EmbedTemplateRenderer(_timeProvider);
+        var embedService = new EmbedTemplateService(
+            _dbContextFactory,
+            new DiscordSocketClient(),
+            renderer,
+            _timeProvider,
+            NullLogger<EmbedTemplateService>.Instance);
+
+        await embedService.SaveTemplateAsync(new DiscordEmbedTemplateDto
+        {
+            TemplateType = EmbedTemplateTypeDto.TwitchLive,
+            ColorHex = "#57F287",
+            TitleTemplate = "LIVE: {StreamTitle} ({StreamerName})",
+            EnableAuthor = false,
+            CustomFields = [new("Catégorie", "{GameName}", Inline: false, IsEnabled: true, Order: 0)]
+        });
+
+        var liveService = new TwitchLiveService(
+            new DiscordSocketClient(),
+            new TwitchConfigService(_dbContextFactory, null, NullLogger<TwitchConfigService>.Instance),
+            new TwitchStateService(_dbContextFactory, NullLogger<TwitchStateService>.Instance),
+            new TwitchApiClient(new HttpClient(new MockHttpMessageHandler("{\"data\":[]}")), new TwitchConfigService(_dbContextFactory, null, NullLogger<TwitchConfigService>.Instance), _timeProvider, NullLogger<TwitchApiClient>.Instance),
+            NullLogger<TwitchLiveService>.Instance,
+            embedService);
+
+        var stream = new TwitchStreamInfoDto
+        {
+            StreamId = "123",
+            UserId = "456",
+            UserLogin = "alexdev",
+            UserName = "AlexDev",
+            GameName = "DotNet",
+            Title = "Dev Stream",
+            ViewerCount = 50,
+            StartedAt = _timeProvider.GetUtcNow()
+        };
+
+        // Act
+        var embed = await liveService.CreateStreamEmbedAsync(stream, null);
+
+        // Assert
+        embed.Title.Should().Be("LIVE: Dev Stream (AlexDev)");
+        embed.Color.Should().Be(new Discord.Color(0x57, 0xF2, 0x87));
+        embed.Author.Should().BeNull();
+        embed.Fields.Should().HaveCount(1);
+        embed.Fields[0].Name.Should().Be("Catégorie");
+        embed.Fields[0].Value.Should().Be("DotNet");
     }
 
     private class MockHttpMessageHandler : HttpMessageHandler

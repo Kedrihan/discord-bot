@@ -47,6 +47,13 @@
                             <i class="bi bi-youtube me-1" style="color: #FF0000;"></i> YouTube
                         </NavLink>
                     }
+
+                    @if (hasTwitch || hasYouTube || isSuper)
+                    {
+                        <NavLink class="nav-link" href="/embeds">
+                            <i class="bi bi-card-heading me-1 text-info"></i> Modèles d'Embeds
+                        </NavLink>
+                    }
                 </div>
             </Authorized>
             <NotAuthorized>

@@ -1,6 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.Twitch;
 
 namespace DiscordBot.Features.Twitch;
@@ -10,7 +12,8 @@ public class TwitchLiveService(
     TwitchConfigService configService,
     TwitchStateService stateService,
     TwitchApiClient twitchApiClient,
-    ILogger<TwitchLiveService> logger)
+    ILogger<TwitchLiveService> logger,
+    EmbedTemplateService? embedTemplateService = null)
 {
     public static readonly Color TwitchPurple = new(0x91, 0x46, 0xFF);
     private readonly SemaphoreSlim _checkLock = new(1, 1);
@@ -117,6 +120,48 @@ public class TwitchLiveService(
         return embed.Build();
     }
 
+    public async Task<Embed> CreateStreamEmbedAsync(TwitchStreamInfoDto stream, string? avatarUrl, string guildId = "", CancellationToken ct = default)
+    {
+        if (embedTemplateService != null)
+        {
+            var template = await embedTemplateService.GetTemplateAsync(EmbedTemplateTypeDto.TwitchLive, guildId, stream.UserLogin, ct);
+            var variables = ExtractStreamVariables(stream);
+            var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
+            var formattedThumbnail = string.IsNullOrWhiteSpace(stream.ThumbnailUrl)
+                ? null
+                : stream.ThumbnailUrl
+                    .Replace("{width}", "1280", StringComparison.OrdinalIgnoreCase)
+                    .Replace("{height}", "720", StringComparison.OrdinalIgnoreCase);
+
+            return embedTemplateService.Renderer.RenderEmbed(
+                template,
+                variables,
+                authorIconUrl: avatarUrl,
+                authorUrl: streamUrl,
+                embedUrl: streamUrl,
+                imageUrl: formattedThumbnail,
+                timestamp: stream.StartedAt);
+        }
+
+        return BuildStreamEmbed(stream, avatarUrl);
+    }
+
+    public static Dictionary<string, string> ExtractStreamVariables(TwitchStreamInfoDto stream) => new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["StreamTitle"] = stream.Title,
+        ["Title"] = stream.Title,
+        ["Streamer"] = stream.UserName,
+        ["StreamerName"] = stream.UserName,
+        ["StreamerLogin"] = stream.UserLogin,
+        ["GameName"] = stream.GameName,
+        ["Game"] = stream.GameName,
+        ["ViewerCount"] = stream.ViewerCount.ToString("N0"),
+        ["StreamUrl"] = $"https://twitch.tv/{stream.UserLogin}",
+        ["Url"] = $"https://twitch.tv/{stream.UserLogin}",
+        ["StartedAtUnix"] = stream.StartedAt.ToUnixTimeSeconds().ToString(),
+        ["StartedAtFormatted"] = stream.StartedAt.ToString("g")
+    };
+
     public async Task<TwitchExecutionResultDto> CheckStreamsAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
@@ -198,7 +243,7 @@ public class TwitchLiveService(
                     try
                     {
                         var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
-                        var embed = BuildStreamEmbed(stream, avatarUrl);
+                        var embed = await CreateStreamEmbedAsync(stream, avatarUrl, channelConfig.GuildId, ct);
                         var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
                         var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
                         if (text.Length > 2000)
@@ -345,7 +390,7 @@ public class TwitchLiveService(
                 try
                 {
                     var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
-                    var embed = BuildStreamEmbed(stream, avatarUrl);
+                    var embed = await CreateStreamEmbedAsync(stream, avatarUrl, channelConfig.GuildId, ct);
                     var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
                     var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
                     if (text.Length > 2000)
@@ -460,7 +505,7 @@ public class TwitchLiveService(
             }
 
             var avatarUrl = await twitchApiClient.GetUserProfileImageUrlAsync(stream.UserLogin, ct);
-            var embed = BuildStreamEmbed(stream, avatarUrl);
+            var embed = await CreateStreamEmbedAsync(stream, avatarUrl, channelConfig.GuildId, ct);
             var streamUrl = $"https://twitch.tv/{stream.UserLogin}";
             var text = FormatMessage(channelConfig.CustomMessage, stream.UserName, stream.Title, stream.GameName, streamUrl);
             var fullTestText = "[Notification de test]\n" + text;

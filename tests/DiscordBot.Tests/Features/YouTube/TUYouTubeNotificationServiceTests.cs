@@ -1,5 +1,7 @@
 using System.Net;
 using Discord.WebSocket;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.YouTube;
 using DiscordBot.Features.YouTube;
 using DiscordBot.Tests.TestHelpers;
@@ -335,6 +337,63 @@ public class TUYouTubeNotificationServiceTests
         // Assert
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("n'a pas été trouvée");
+    }
+
+    [Test]
+    public async Task CreateVideoEmbedAsync_WithCustomTemplate_ShouldUseCustomizedFieldsAndColor()
+    {
+        // Arrange
+        var renderer = new EmbedTemplateRenderer(_timeProvider);
+        var embedService = new EmbedTemplateService(
+            _dbContextFactory,
+            new DiscordSocketClient(),
+            renderer,
+            _timeProvider,
+            NullLogger<EmbedTemplateService>.Instance);
+
+        await embedService.SaveTemplateAsync(new DiscordEmbedTemplateDto
+        {
+            TemplateType = EmbedTemplateTypeDto.YouTubeVideo,
+            ColorHex = "#FEE75C",
+            TitleTemplate = "VIDEO: {VideoTitle}",
+            EnableAuthor = true,
+            AuthorNameTemplate = "Par: {ChannelName}",
+            CustomFields = [new("Lien", "{VideoUrl}", Inline: true, IsEnabled: true, Order: 0)]
+        });
+
+        var feedClient = new YouTubeFeedClient(new HttpClient(new MockHttpMessageHandler(SampleFeedXml)), NullLogger<YouTubeFeedClient>.Instance);
+        var configService = new YouTubeConfigService(_dbContextFactory, NullLogger<YouTubeConfigService>.Instance);
+        var historyService = new YouTubeHistoryService(_dbContextFactory, _timeProvider, NullLogger<YouTubeHistoryService>.Instance);
+        var service = new YouTubeNotificationService(
+            new DiscordSocketClient(),
+            configService,
+            historyService,
+            feedClient,
+            _timeProvider,
+            NullLogger<YouTubeNotificationService>.Instance,
+            embedService);
+
+        var video = new YouTubeVideoInfoDto(
+            VideoId: "vid123",
+            ChannelId: "UC123",
+            ChannelTitle: "MyChannel",
+            Title: "Best .NET Features",
+            Url: "https://www.youtube.com/watch?v=vid123",
+            ThumbnailUrl: "https://i.ytimg.com/vi/vid123/hqdefault.jpg",
+            PublishedAt: _timeProvider.GetUtcNow(),
+            VideoType: "Vidéo"
+        );
+
+        // Act
+        var embed = await service.CreateVideoEmbedAsync(video);
+
+        // Assert
+        embed.Title.Should().Be("VIDEO: Best .NET Features");
+        embed.Color.Should().Be(new Discord.Color(0xFE, 0xE7, 0x5C));
+        embed.Author!.Value.Name.Should().Be("Par: MyChannel");
+        embed.Fields.Should().HaveCount(1);
+        embed.Fields[0].Name.Should().Be("Lien");
+        embed.Fields[0].Value.Should().Be("https://www.youtube.com/watch?v=vid123");
     }
 
     private class MockHttpMessageHandler(string content) : HttpMessageHandler

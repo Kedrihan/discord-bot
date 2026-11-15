@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.YouTube;
 
 namespace DiscordBot.Features.YouTube;
@@ -11,7 +13,8 @@ public partial class YouTubeNotificationService(
     YouTubeHistoryService historyService,
     YouTubeFeedClient feedClient,
     TimeProvider timeProvider,
-    ILogger<YouTubeNotificationService> logger)
+    ILogger<YouTubeNotificationService> logger,
+    EmbedTemplateService? embedTemplateService = null)
 {
     public static readonly Color YouTubeRed = new(0xFF, 0x00, 0x00);
     private readonly SemaphoreSlim _checkLock = new(1, 1);
@@ -183,6 +186,46 @@ public partial class YouTubeNotificationService(
         return embed.Build();
     }
 
+    public async Task<Embed> CreateVideoEmbedAsync(YouTubeVideoInfoDto video, string guildId = "", CancellationToken ct = default)
+    {
+        if (embedTemplateService != null)
+        {
+            var template = await embedTemplateService.GetTemplateAsync(EmbedTemplateTypeDto.YouTubeVideo, guildId, video.ChannelId, ct);
+            var variables = ExtractVideoVariables(video);
+            var safeVideoUrl = SanitizeUrl(video.Url, video.VideoId);
+            var channelUrl = !string.IsNullOrWhiteSpace(video.ChannelId)
+                ? $"https://www.youtube.com/channel/{Uri.EscapeDataString(video.ChannelId.Trim())}"
+                : null;
+
+            return embedTemplateService.Renderer.RenderEmbed(
+                template,
+                variables,
+                authorIconUrl: null,
+                authorUrl: channelUrl,
+                embedUrl: safeVideoUrl,
+                imageUrl: video.ThumbnailUrl,
+                timestamp: video.PublishedAt);
+        }
+
+        return BuildVideoEmbed(video);
+    }
+
+    public static Dictionary<string, string> ExtractVideoVariables(YouTubeVideoInfoDto video) => new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["VideoTitle"] = video.Title,
+        ["Title"] = video.Title,
+        ["ChannelName"] = video.ChannelTitle,
+        ["Channel"] = video.ChannelTitle,
+        ["ChannelId"] = video.ChannelId,
+        ["VideoId"] = video.VideoId,
+        ["VideoUrl"] = video.Url,
+        ["Url"] = video.Url,
+        ["VideoType"] = video.VideoType,
+        ["Type"] = video.VideoType,
+        ["PublishedAtUnix"] = video.PublishedAt.ToUnixTimeSeconds().ToString(),
+        ["PublishedAtFormatted"] = video.PublishedAt.ToString("g")
+    };
+
     public async Task<YouTubeExecutionResultDto> CheckNewVideosAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
@@ -252,7 +295,7 @@ public partial class YouTubeNotificationService(
                     try
                     {
                         var text = FormatMessage(channel.CustomMessage, video);
-                        var embed = BuildVideoEmbed(video);
+                        var embed = await CreateVideoEmbedAsync(video, channel.GuildId, ct);
 
                         await messageChannel.SendMessageAsync(text: text, embed: embed, allowedMentions: allowedMentions);
                         await historyService.MarkVideosAsSeenAsync(channel.GuildId, [video.VideoId], channel.ChannelId, ct);
@@ -318,7 +361,7 @@ public partial class YouTubeNotificationService(
         );
 
         var text = FormatMessage(channel.CustomMessage, sampleVideo);
-        var embed = BuildVideoEmbed(sampleVideo);
+        var embed = await CreateVideoEmbedAsync(sampleVideo, channel.GuildId, ct);
 
         await messageChannel.SendMessageAsync(text: text, embed: embed, allowedMentions: AllowedMentions.None);
         return new YouTubeExecutionResultDto(true, $"Notification de test YouTube envoyée avec succès dans le salon <#{discordChannelId}>.", 1);

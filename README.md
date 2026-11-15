@@ -21,6 +21,12 @@ Ce projet combine un **Bot Discord** (avec modules automatisés : Veille Tech IA
   * Suivi et publication automatique des nouveaux clips avec historique anti-doublons.
 * **Notifications YouTube (`Features/YouTube`)** :
   * Surveillance des chaînes YouTube suivies via flux RSS/Atom et publication automatique des nouvelles vidéos.
+* **Personnalisation des Embeds Discord (`Core/Discord/Embeds`)** :
+  * Modèles d'embeds entièrement configurables pour Twitch Live, Twitch Clips et YouTube Vidéos.
+  * Personnalisation complète : couleur hex, titre, description Markdown, en-tête/auteur, champs personnalisés dynamiques (réordonnables, inline), miniature/bannière et horodatage.
+  * Neutralisation automatique des mentions non autorisées (`@everyone`, `@here`, etc.) dans les variables dynamiques.
+  * Hiérarchie de surcharge flexible : modèle global par défaut, surcharge par serveur Discord ou par chaîne/streamer spécifique.
+  * Prévisualisation interactive en direct dans le navigateur (Discord Dark Mode) et outil d'envoi de test vers un salon Discord.
 * **Dashboard Web Blazor Server (Port 8080)** :
   * **Authentification & RBAC** : Connexion via **Discord OAuth2** (`/login`, `/logout`, `/signin-discord`) avec gestion des rôles (`SuperAdmin` via `DISCORD_ADMIN_USER_ID` et permissions par serveur).
   * `/` : Page d'accueil et connexion.
@@ -28,6 +34,7 @@ Ce projet combine un **Bot Discord** (avec modules automatisés : Veille Tech IA
   * `/briefing` : Configuration du Morning Briefing Météo / Vélo.
   * `/twitch` : Gestion des chaînes Twitch suivies et paramètres Live / Clips.
   * `/youtube` : Gestion des chaînes YouTube suivies et paramètres de notification.
+  * `/embeds` : Personnalisation des modèles d'embeds Discord (Twitch Live, Clips, YouTube) avec prévisualisation en direct et envoi de test.
   * `/settings` : Paramètres globaux du bot (activité, statut, veille technologique, etc.) modifiables à chaud.
   * `/permissions` : Gestion des permissions d'administration par serveur Discord.
 * **Persistance & Base de données** :

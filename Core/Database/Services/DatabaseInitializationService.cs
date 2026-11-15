@@ -16,6 +16,7 @@ public class DatabaseInitializationService(
         await context.Database.EnsureCreatedAsync(cancellationToken);
         await EnsureYouTubeTablesExistAsync(context, cancellationToken);
         await EnsurePermissionsTableExistsAsync(context, cancellationToken);
+        await EnsureDiscordEmbedTemplatesTableExistsAsync(context, cancellationToken);
         await MigrateGuildIsolationSchemaAsync(context, cancellationToken);
         await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL;", cancellationToken);
         await context.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout = 5000;", cancellationToken);
@@ -87,6 +88,33 @@ public class DatabaseInitializationService(
 
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_GuildAdminPermissions_GuildId_UserId"
                 ON "GuildAdminPermissions" ("GuildId", "UserId");
+            """;
+
+        await context.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+    }
+
+    private static async Task EnsureDiscordEmbedTemplatesTableExistsAsync(BotDbContext context, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            CREATE TABLE IF NOT EXISTS "DiscordEmbedTemplates" (
+                "Id" INTEGER NOT NULL CONSTRAINT "PK_DiscordEmbedTemplates" PRIMARY KEY AUTOINCREMENT,
+                "TemplateType" TEXT NOT NULL,
+                "GuildId" TEXT NOT NULL DEFAULT '',
+                "ChannelTargetId" TEXT NOT NULL DEFAULT '',
+                "ColorHex" TEXT NOT NULL DEFAULT '#9146FF',
+                "TitleTemplate" TEXT NOT NULL DEFAULT '',
+                "DescriptionTemplate" TEXT NOT NULL DEFAULT '',
+                "EnableAuthor" INTEGER NOT NULL DEFAULT 1,
+                "AuthorNameTemplate" TEXT NOT NULL DEFAULT '',
+                "FooterTemplate" TEXT NOT NULL DEFAULT '',
+                "ShowThumbnail" INTEGER NOT NULL DEFAULT 1,
+                "ShowTimestamp" INTEGER NOT NULL DEFAULT 1,
+                "CustomFieldsJson" TEXT NOT NULL DEFAULT '[]',
+                "UpdatedAt" INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_DiscordEmbedTemplates_Type_Guild_Target"
+                ON "DiscordEmbedTemplates" ("TemplateType", "GuildId", "ChannelTargetId");
             """;
 
         await context.Database.ExecuteSqlRawAsync(sql, cancellationToken);

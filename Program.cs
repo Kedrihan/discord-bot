@@ -8,6 +8,7 @@ using DiscordBot.Components;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Services;
 using DiscordBot.Core.Discord;
+using DiscordBot.Core.Discord.Embeds;
 using DiscordBot.Core.Permissions;
 using DiscordBot.Core.Scheduling;
 using DiscordBot.Core.Settings;
@@ -177,6 +178,10 @@ builder.Services.AddSingleton<ICalendarJob, MorningBriefingJob>();
 
 // Moteur de planification unifié pour les tâches calendaires (Morning Briefing, Veille Tech)
 builder.Services.AddHostedService<CalendarSchedulerEngine>();
+
+// Services dédiés à la personnalisation des embeds Discord
+builder.Services.AddSingleton<EmbedTemplateRenderer>();
+builder.Services.AddSingleton<EmbedTemplateService>();
 
 // Services dédiés aux notifications Twitch Live et Clips
 builder.Services.AddTwitchLibEventSubWebsockets();

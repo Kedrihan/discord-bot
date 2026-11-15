@@ -1,5 +1,7 @@
 ﻿using System.Net;
 using Discord.WebSocket;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.Twitch;
 using DiscordBot.Features.Twitch;
 using DiscordBot.Tests.TestHelpers;
@@ -620,6 +622,69 @@ public class TUTwitchClipServiceTests
 
         await executeTask;
         scheduler.IsWaitingForInitialDelay.Should().BeFalse();
+    }
+
+    [Test]
+    public async Task CreateClipEmbedAsync_WithCustomTemplate_ShouldUseCustomizedFieldsAndColor()
+    {
+        // Arrange
+        var renderer = new EmbedTemplateRenderer(_timeProvider);
+        var embedService = new EmbedTemplateService(
+            _dbContextFactory,
+            new DiscordSocketClient(),
+            renderer,
+            _timeProvider,
+            NullLogger<EmbedTemplateService>.Instance);
+
+        await embedService.SaveTemplateAsync(new DiscordEmbedTemplateDto
+        {
+            TemplateType = EmbedTemplateTypeDto.TwitchClip,
+            ColorHex = "#EB459E",
+            TitleTemplate = "CLIP: {ClipTitle}",
+            EnableAuthor = true,
+            AuthorNameTemplate = "{BroadcasterName} - {CreatorName}",
+            CustomFields = [new("Vues", "{ViewCount}", Inline: true, IsEnabled: true, Order: 0)]
+        });
+
+        var configService = new TwitchConfigService(_dbContextFactory, null, NullLogger<TwitchConfigService>.Instance);
+        var historyService = new TwitchClipHistoryService(_dbContextFactory, _timeProvider, NullLogger<TwitchClipHistoryService>.Instance);
+        var apiClient = new TwitchApiClient(new HttpClient(new MockHttpMessageHandler("{\"data\":[]}")), configService, _timeProvider, NullLogger<TwitchApiClient>.Instance);
+        var service = new TwitchClipService(
+            new DiscordSocketClient(),
+            configService,
+            historyService,
+            apiClient,
+            _timeProvider,
+            NullLogger<TwitchClipService>.Instance,
+            embedService);
+
+        var clip = new TwitchClipInfoDto(
+            Id: "clip123",
+            Url: "https://clips.twitch.tv/clip123",
+            EmbedUrl: "https://clips.twitch.tv/embed?clip=clip123",
+            BroadcasterId: "streamer1",
+            BroadcasterName: "StreamerOne",
+            CreatorId: "creator1",
+            CreatorName: "CreatorOne",
+            VideoId: "vid1",
+            GameId: "game1",
+            Title: "Great Clip",
+            ViewCount: 99,
+            CreatedAt: _timeProvider.GetUtcNow(),
+            ThumbnailUrl: "https://example.com/clip.jpg",
+            Duration: 15.0
+        );
+
+        // Act
+        var embed = await service.CreateClipEmbedAsync(clip);
+
+        // Assert
+        embed.Title.Should().Be("CLIP: Great Clip");
+        embed.Color.Should().Be(new Discord.Color(0xEB, 0x45, 0x9E));
+        embed.Author!.Value.Name.Should().Be("StreamerOne - CreatorOne");
+        embed.Fields.Should().HaveCount(1);
+        embed.Fields[0].Name.Should().Be("Vues");
+        embed.Fields[0].Value.Should().Be("99");
     }
 
     private class MockHttpMessageHandler : HttpMessageHandler

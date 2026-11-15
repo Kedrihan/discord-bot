@@ -1,0 +1,133 @@
+@namespace DiscordBot.Components.Pages
+
+<div class="discord-preview-container p-3 rounded" style="background-color: #313338; color: #dbdee1; font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px;">
+    <!-- Pseudo-message header -->
+    <div class="d-flex align-items-center gap-2 mb-2">
+        <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 38px; height: 38px; background-color: #5865F2; color: white;">
+            <i class="bi bi-discord fs-5"></i>
+        </div>
+        <div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-white" style="font-size: 0.95rem;">DiscordBot</span>
+                <span class="badge" style="background-color: #5865F2; font-size: 0.65rem; padding: 2px 4px;">BOT</span>
+                <span class="text-secondary" style="font-size: 0.75rem;">Aujourd'hui à @(DateTime.Now.ToString("HH:mm"))</span>
+            </div>
+            <div class="text-secondary" style="font-size: 0.8rem;">Exemple de notification Discord</div>
+        </div>
+    </div>
+
+    <!-- Discord Embed Card -->
+    <div class="discord-embed-card p-3 rounded-2" style="background-color: #2b2d31; border-left: 4px solid @(SafeColorHex); border-radius: 4px;">
+        <!-- Author -->
+        @if (Template?.EnableAuthor == true && !string.IsNullOrWhiteSpace(RenderedAuthorName))
+        {
+            <div class="d-flex align-items-center gap-2 mb-2">
+                @if (!string.IsNullOrWhiteSpace(AuthorIconUrl))
+                {
+                    <img src="@AuthorIconUrl" alt="Author Icon" class="rounded-circle" style="width: 22px; height: 22px; object-fit: cover;" />
+                }
+                <span class="fw-semibold text-white" style="font-size: 0.85rem;">
+                    @RenderedAuthorName
+                </span>
+            </div>
+        }
+
+        <!-- Title -->
+        @if (!string.IsNullOrWhiteSpace(RenderedTitle))
+        {
+            <div class="fw-bold mb-2" style="font-size: 1rem;">
+                <a href="@(EmbedUrl ?? "#")" target="_blank" class="text-decoration-none" style="color: #00a8fc;">
+                    @RenderedTitle
+                </a>
+            </div>
+        }
+
+        <!-- Description -->
+        @if (!string.IsNullOrWhiteSpace(RenderedDescription))
+        {
+            <div class="mb-3" style="font-size: 0.9rem; white-space: pre-wrap; color: #dbdee1;">
+                @RenderedDescription
+            </div>
+        }
+
+        <!-- Fields -->
+        @if (RenderedFields.Count > 0)
+        {
+            <div class="row g-2 mb-2">
+                @foreach (var field in RenderedFields)
+                {
+                    <div class="@(field.Inline ? "col-sm-4 col-6" : "col-12")">
+                        <div class="fw-bold text-uppercase" style="font-size: 0.75rem; color: #b5bac1; letter-spacing: 0.5px;">
+                            @field.Name
+                        </div>
+                        <div style="font-size: 0.85rem; color: #dbdee1; word-break: break-word;">
+                            @field.Value
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- Image Banner -->
+        @if (Template?.ShowThumbnail == true && !string.IsNullOrWhiteSpace(ImageUrl))
+        {
+            <div class="mt-2 mb-2">
+                <img src="@ImageUrl" alt="Embed Media" class="img-fluid rounded" style="max-height: 240px; width: 100%; object-fit: cover;" />
+            </div>
+        }
+
+        <!-- Footer & Timestamp -->
+        @if (!string.IsNullOrWhiteSpace(RenderedFooter) || Template?.ShowTimestamp == true)
+        {
+            <div class="d-flex align-items-center gap-1 mt-2 pt-1 text-secondary" style="font-size: 0.75rem; color: #949ba4 !important;">
+                @if (!string.IsNullOrWhiteSpace(RenderedFooter))
+                {
+                    <span>@RenderedFooter</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(RenderedFooter) && Template?.ShowTimestamp == true)
+                {
+                    <span>•</span>
+                }
+                @if (Template?.ShowTimestamp == true)
+                {
+                    <span>@(Timestamp?.ToString("dd/MM/yyyy HH:mm") ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public DiscordEmbedTemplateDto? Template { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string> Variables { get; set; } = new Dictionary<string, string>();
+    [Parameter] public string? AuthorIconUrl { get; set; }
+    [Parameter] public string? AuthorUrl { get; set; }
+    [Parameter] public string? EmbedUrl { get; set; }
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public DateTimeOffset? Timestamp { get; set; }
+
+    private string SafeColorHex => !string.IsNullOrWhiteSpace(Template?.ColorHex) ? Template.ColorHex : "#9146FF";
+
+    private string RenderedTitle => EmbedTemplateRenderer.ReplacePlaceholders(Template?.TitleTemplate ?? string.Empty, Variables);
+    private string RenderedDescription => EmbedTemplateRenderer.ReplacePlaceholders(Template?.DescriptionTemplate ?? string.Empty, Variables);
+    private string RenderedAuthorName => EmbedTemplateRenderer.ReplacePlaceholders(Template?.AuthorNameTemplate ?? string.Empty, Variables);
+    private string RenderedFooter => EmbedTemplateRenderer.ReplacePlaceholders(Template?.FooterTemplate ?? string.Empty, Variables);
+
+    private List<(string Name, string Value, bool Inline)> RenderedFields
+    {
+        get
+        {
+            if (Template?.CustomFields == null) return [];
+
+            return Template.CustomFields
+                .Where(f => f.IsEnabled)
+                .OrderBy(f => f.Order)
+                .Select(f => (
+                    Name: EmbedTemplateRenderer.ReplacePlaceholders(f.Name, Variables),
+                    Value: EmbedTemplateRenderer.ReplacePlaceholders(f.Value, Variables),
+                    Inline: f.Inline
+                ))
+                .ToList();
+        }
+    }
+}

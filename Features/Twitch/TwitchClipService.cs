@@ -1,6 +1,8 @@
 ﻿using System.Globalization;
 using Discord;
 using Discord.WebSocket;
+using DiscordBot.Core.Discord.Embeds;
+using DiscordBot.DTO.Embeds;
 using DiscordBot.DTO.Twitch;
 
 namespace DiscordBot.Features.Twitch;
@@ -11,7 +13,8 @@ public class TwitchClipService(
     TwitchClipHistoryService historyService,
     TwitchApiClient apiClient,
     TimeProvider timeProvider,
-    ILogger<TwitchClipService> logger)
+    ILogger<TwitchClipService> logger,
+    EmbedTemplateService? embedTemplateService = null)
 {
     private readonly SemaphoreSlim _checkLock = new(1, 1);
 
@@ -119,6 +122,45 @@ public class TwitchClipService(
         return embed.Build();
     }
 
+    public async Task<Embed> CreateClipEmbedAsync(TwitchClipInfoDto clip, string guildId = "", CancellationToken ct = default)
+    {
+        if (embedTemplateService != null)
+        {
+            var template = await embedTemplateService.GetTemplateAsync(EmbedTemplateTypeDto.TwitchClip, guildId, clip.BroadcasterName, ct);
+            var variables = ExtractClipVariables(clip);
+            var rawClipUrl = string.IsNullOrWhiteSpace(clip.Url) ? $"https://clips.twitch.tv/{clip.Id}" : clip.Url;
+            var broadcasterUrl = !string.IsNullOrWhiteSpace(clip.BroadcasterName)
+                ? $"https://twitch.tv/{Uri.EscapeDataString(clip.BroadcasterName.Trim())}"
+                : null;
+
+            return embedTemplateService.Renderer.RenderEmbed(
+                template,
+                variables,
+                authorIconUrl: null,
+                authorUrl: broadcasterUrl,
+                embedUrl: rawClipUrl,
+                imageUrl: clip.ThumbnailUrl,
+                timestamp: clip.CreatedAt);
+        }
+
+        return BuildClipEmbed(clip);
+    }
+
+    public static Dictionary<string, string> ExtractClipVariables(TwitchClipInfoDto clip) => new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ClipTitle"] = clip.Title,
+        ["Title"] = clip.Title,
+        ["BroadcasterName"] = clip.BroadcasterName,
+        ["Streamer"] = clip.BroadcasterName,
+        ["CreatorName"] = clip.CreatorName,
+        ["ClipUrl"] = string.IsNullOrWhiteSpace(clip.Url) ? $"https://clips.twitch.tv/{clip.Id}" : clip.Url,
+        ["Url"] = string.IsNullOrWhiteSpace(clip.Url) ? $"https://clips.twitch.tv/{clip.Id}" : clip.Url,
+        ["DurationSeconds"] = Math.Round(clip.Duration).ToString(),
+        ["ViewCount"] = clip.ViewCount.ToString("N0", CultureInfo.InvariantCulture),
+        ["CreatedAtUnix"] = clip.CreatedAt.ToUnixTimeSeconds().ToString(),
+        ["CreatedAtFormatted"] = clip.CreatedAt.ToString("g")
+    };
+
     public async Task<TwitchClipExecutionResultDto> CheckNewClipsAsync(CancellationToken ct = default)
     {
         var settings = configService.GetSettings();
@@ -202,7 +244,7 @@ public class TwitchClipService(
                     try
                     {
                         var text = FormatClipMessage(channel.ClipCustomMessage, clip);
-                        var embed = BuildClipEmbed(clip);
+                        var embed = await CreateClipEmbedAsync(clip, channel.GuildId, ct);
 
                         await messageChannel.SendMessageAsync(text: text, embed: embed);
                         await historyService.MarkClipsAsSeenAsync(channel.GuildId, [clip.Id], broadcasterId, ct);
@@ -287,7 +329,7 @@ public class TwitchClipService(
         );
 
         var text = FormatClipMessage(channel.ClipCustomMessage, clip);
-        var embed = BuildClipEmbed(clip);
+        var embed = await CreateClipEmbedAsync(clip, channel.GuildId, ct);
 
         await messageChannel.SendMessageAsync(text: text, embed: embed);
         return new TwitchClipExecutionResultDto(true, $"Notification de test de clip envoyée avec succès dans le salon <#{discordChannelId}>.", 1);
