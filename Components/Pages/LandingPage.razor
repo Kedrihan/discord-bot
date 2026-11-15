@@ -63,9 +63,12 @@
                             <i class="bi bi-shield-exclamation fs-5"></i>
                             <span>Compte Discord non autorisé (réservé à l'administrateur)</span>
                         </div>
-                        <a href="/logout" class="btn btn-outline-danger">
-                            <i class="bi bi-box-arrow-right me-2"></i>Se déconnecter
-                        </a>
+                        <form method="post" action="/logout" class="d-inline">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i class="bi bi-box-arrow-right me-2"></i>Se déconnecter
+                            </button>
+                        </form>
                     }
                     else
                     {

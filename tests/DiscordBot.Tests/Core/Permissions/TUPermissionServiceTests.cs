@@ -247,12 +247,12 @@ public class TUPermissionServiceTests
     }
 
     [Test]
-    public void IsChannelInGuild_ShouldReturnTrue_WhenDiscordClientIsNull_AndChannelIsValidSnowflake()
+    public void IsChannelInGuild_ShouldReturnFalse_WhenDiscordClientIsNull_AndChannelIsValidSnowflake()
     {
         var config = new ConfigurationBuilder().Build();
         var service = new PermissionService(_dbContextFactory, null, config, _timeProvider, NullLogger<PermissionService>.Instance);
 
-        service.IsChannelInGuild("1234567890", "9876543210").Should().BeTrue();
+        service.IsChannelInGuild("1234567890", "9876543210").Should().BeFalse();
     }
 
     [Test]

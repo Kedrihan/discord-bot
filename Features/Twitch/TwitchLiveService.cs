@@ -54,13 +54,7 @@ public class TwitchLiveService(
     }
 
     public static string SanitizeUntrustedText(string input)
-    {
-        if (string.IsNullOrEmpty(input)) return string.Empty;
-        return input
-            .Replace("@everyone", "@\u200beveryone", StringComparison.OrdinalIgnoreCase)
-            .Replace("@here", "@\u200bhere", StringComparison.OrdinalIgnoreCase)
-            .Replace("<@", "<\u200b@", StringComparison.OrdinalIgnoreCase);
-    }
+        => Core.Discord.Embeds.EmbedTemplateRenderer.SanitizeUntrustedText(input);
 
     public static Embed BuildStreamEmbed(TwitchStreamInfoDto stream, string? avatarUrl)
     {

@@ -84,9 +84,12 @@
                             <i class="bi bi-person-circle fs-5 text-light"></i>
                         }
                         <span class="small fw-semibold text-light">@context.User.Identity?.Name</span>
-                        <a href="/logout" class="btn btn-sm btn-outline-danger ms-2" title="Se déconnecter">
-                            <i class="bi bi-box-arrow-right"></i>
-                        </a>
+                        <form method="post" action="/logout" class="d-inline">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-sm btn-outline-danger ms-2" title="Se déconnecter">
+                                <i class="bi bi-box-arrow-right"></i>
+                            </button>
+                        </form>
                     </div>
                 </Authorized>
                 <NotAuthorized>

@@ -442,7 +442,15 @@
 
     private async Task OnGuildChangedAsync(ChangeEventArgs e)
     {
-        selectedGuildId = e.Value?.ToString() ?? string.Empty;
+        var newGuildId = e.Value?.ToString() ?? string.Empty;
+        if (!isSuperAdmin && !string.IsNullOrEmpty(newGuildId) && !authorizedGuildIds.Contains(newGuildId))
+        {
+            feedbackMessage = "Action non autorisée : vous n'avez pas accès à ce serveur Discord.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        selectedGuildId = newGuildId;
         selectedTargetId = string.Empty;
         await LoadCurrentTemplateAsync();
     }
@@ -744,6 +752,7 @@
     private IEnumerable<TargetOption> GetAvailableTargets()
     {
         if (string.IsNullOrEmpty(selectedGuildId)) return [];
+        if (!isSuperAdmin && !authorizedGuildIds.Contains(selectedGuildId)) return [];
 
         if (selectedType == EmbedTemplateTypeDto.YouTubeVideo)
         {
@@ -765,7 +774,9 @@
             ? selectedGuildId
             : null;
 
-        if (targetGuildId != null && ulong.TryParse(targetGuildId, out var gId))
+        if (targetGuildId != null
+            && (isSuperAdmin || authorizedGuildIds.Contains(targetGuildId))
+            && ulong.TryParse(targetGuildId, out var gId))
         {
             var g = DiscordClient.GetGuild(gId);
             if (g != null) return g.TextChannels.OrderBy(c => c.Position);

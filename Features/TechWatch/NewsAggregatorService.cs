@@ -1,4 +1,8 @@
-﻿using System.Text.Json;
+﻿using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using DiscordBot.DTO.TechWatch;
 
@@ -179,13 +183,31 @@ public class NewsAggregatorService(
         return result;
     }
 
+    private const int MaxRssResponseBytes = 5 * 1024 * 1024;
+
     private async Task<List<NewsArticleDto>> FetchRssFeedAsync(string feedUrl, string sourceName, CancellationToken cancellationToken)
     {
         List<NewsArticleDto> result = [];
         try
         {
-            var content = await httpClient.GetStringAsync(feedUrl, cancellationToken);
-            var xDoc = XDocument.Parse(content);
+            if (!await IsAllowedExternalFeedUriAsync(feedUrl, cancellationToken))
+            {
+                logger.LogWarning("Flux RSS bloqué (URL invalide ou hôte interne non autorisé) : {FeedUrl}", feedUrl);
+                return result;
+            }
+
+            var content = await ReadFeedWithLimitAsync(feedUrl, cancellationToken);
+            if (content == null) return result;
+
+            var xmlSettings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = MaxRssResponseBytes
+            };
+            using var stringReader = new StringReader(content);
+            using var xmlReader = XmlReader.Create(stringReader, xmlSettings);
+            var xDoc = XDocument.Load(xmlReader);
 
             // RSS standard (channel -> item)
             var items = xDoc.Descendants("item");
@@ -239,5 +261,82 @@ public class NewsAggregatorService(
         }
 
         return result;
+    }
+
+    private static async Task<bool> IsAllowedExternalFeedUriAsync(string feedUrl, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(feedUrl?.Trim(), UriKind.Absolute, out var uri)) return false;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.IsNullOrEmpty(uri.UserInfo)) return false;
+        if (string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) return false;
+
+        if (IPAddress.TryParse(uri.Host, out var ip))
+        {
+            return !IsPrivateOrReservedIp(ip);
+        }
+
+        try
+        {
+            var addresses = await Dns.GetHostAddressesAsync(uri.DnsSafeHost, cancellationToken);
+            return addresses.Length > 0 && addresses.All(addr => !IsPrivateOrReservedIp(addr));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPrivateOrReservedIp(IPAddress ip)
+    {
+        if (IPAddress.IsLoopback(ip)) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+
+        var bytes = ip.GetAddressBytes();
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            return bytes[0] == 10
+                || bytes[0] == 127
+                || bytes[0] == 0
+                || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
+                || (bytes[0] == 192 && bytes[1] == 168)
+                || (bytes[0] == 169 && bytes[1] == 254);
+        }
+
+        if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || (bytes[0] & 0xFE) == 0xFC;
+        }
+
+        return true;
+    }
+
+    private async Task<string?> ReadFeedWithLimitAsync(string feedUrl, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, feedUrl);
+        using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+
+        if (response.RequestMessage?.RequestUri is { } finalUri
+            && !await IsAllowedExternalFeedUriAsync(finalUri.ToString(), cancellationToken))
+        {
+            logger.LogWarning("Redirection RSS bloquée vers une URL non autorisée : {FinalUri}", finalUri);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var ms = new MemoryStream();
+        var buffer = new byte[8192];
+        int read;
+        while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (ms.Length + read > MaxRssResponseBytes)
+            {
+                logger.LogWarning("Flux RSS trop volumineux (> {MaxBytes} octets) : {FeedUrl}", MaxRssResponseBytes, feedUrl);
+                return null;
+            }
+            ms.Write(buffer, 0, read);
+        }
+
+        return Encoding.UTF8.GetString(ms.ToArray());
     }
 }

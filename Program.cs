@@ -50,6 +50,8 @@ var adminUserId = builder.Configuration["DISCORD_ADMIN_USER_ID"] ?? Environment.
 
 var isOAuthConfigured = !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
 
+var ticketStore = new InMemoryCookieTicketStore(TimeProvider.System);
+
 var authBuilder = builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -60,6 +62,7 @@ var authBuilder = builder.Services.AddAuthentication(options =>
     options.LoginPath = "/login";
     options.LogoutPath = "/logout";
     options.ExpireTimeSpan = TimeSpan.FromDays(7);
+    options.SessionStore = ticketStore;
 });
 
 if (isOAuthConfigured)
@@ -69,6 +72,7 @@ if (isOAuthConfigured)
         options.ClientId = clientId!;
         options.ClientSecret = clientSecret!;
         options.CallbackPath = new PathString("/signin-discord");
+        options.UsePkce = true;
 
         options.AuthorizationEndpoint = "https://discord.com/oauth2/authorize";
         options.TokenEndpoint = "https://discord.com/api/oauth2/token";
@@ -247,7 +251,7 @@ app.MapGet("/login", () =>
     return Results.Challenge(new AuthenticationProperties { RedirectUri = "/dashboard" }, ["Discord"]);
 });
 
-app.MapGet("/logout", async (HttpContext context) =>
+app.MapPost("/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/");

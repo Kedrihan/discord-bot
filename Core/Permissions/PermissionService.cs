@@ -126,8 +126,8 @@ public class PermissionService(
         if (string.IsNullOrWhiteSpace(discordChannelId) || string.IsNullOrWhiteSpace(guildId)) return false;
         if (!ulong.TryParse(discordChannelId.Trim(), out var channelId) || channelId == 0) return false;
         if (!ulong.TryParse(guildId.Trim(), out var parsedGuildId) || parsedGuildId == 0) return false;
-        if (discordClient == null) return true;
-        if (discordClient.GetChannel(channelId) is not SocketGuildChannel guildChannel) return true;
+        if (discordClient == null) return false;
+        if (discordClient.GetChannel(channelId) is not SocketGuildChannel guildChannel) return false;
 
         return string.Equals(guildChannel.Guild.Id.ToString(), guildId.Trim(), StringComparison.Ordinal);
     }
