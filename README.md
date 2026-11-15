@@ -38,10 +38,10 @@ Ce projet combine un **Bot Discord** (avec modules automatisés : Veille Tech IA
   * `/settings` : Paramètres globaux du bot (activité, statut, veille technologique, etc.) modifiables à chaud.
   * `/permissions` : Gestion des permissions d'administration par serveur Discord.
 * **Persistance & Base de données** :
-  * Base de données **SQLite** avec **Entity Framework Core 10** (`data/bot.db`), initialisée automatiquement au démarrage.
+  * Base de données **PostgreSQL** avec **Entity Framework Core 10** (`Npgsql.EntityFrameworkCore.PostgreSQL`), migrée automatiquement au démarrage (`MigrateAsync()`) via `DATABASE_URL` (Render PostgreSQL, Neon, Supabase ou conteneur Docker).
 * **Docker & Docker Compose** :
   * Image ASP.NET Core .NET 10 multi-étape avec utilisateur non-root (`$APP_UID`).
-  * Redémarrage automatique (`restart: unless-stopped`) et volume persistant `./data:/app/data`.
+  * Orchestration avec PostgreSQL 17 et volume persistant nommé (`postgres-data`).
 
 ---
 
@@ -56,7 +56,6 @@ Le projet suit une architecture **Vertical Slices / Feature-Driven** :
 ├── Components/          # Interface Web Blazor Server (Layout, Pages)
 ├── tests/
 │   └── DiscordBot.Tests/ # Tests unitaires NUnit + FluentAssertions (miroir de Core/ et Features/)
-├── data/                # Base SQLite (bot.db) montée en volume Docker
 ├── Program.cs           # Point d'entrée, DI, OAuth2, EF Core et pipeline ASP.NET Core
 ├── Dockerfile           # Build multi-stage .NET 10
 └── docker-compose.yml   # Orchestration locale / serveur
@@ -82,6 +81,9 @@ DISCORD_ADMIN_USER_ID=
 
 # Clé API Google Gemini pour la synthèse IA (https://aistudio.google.com/apikey)
 GEMINI_API_KEY=
+
+# Requis : URI PostgreSQL (Render, Neon, Supabase ou Docker Compose)
+DATABASE_URL=postgresql://discordbot:changeme@postgres:5432/discordbot
 
 # Identifiants API Twitch pour les alertes Live & Clips (https://dev.twitch.tv/console/apps)
 TWITCH_CLIENT_ID=
@@ -130,6 +132,11 @@ TWITCH_USER_ACCESS_TOKEN=
 * **Exécuter les tests unitaires (NUnit)** :
   ```bash
   dotnet test tests/DiscordBot.Tests/DiscordBot.Tests.csproj
+  ```
+* **Créer une migration EF Core (PostgreSQL)** :
+  Les migrations sont appliquées automatiquement au démarrage via `DatabaseInitializationService` (`MigrateAsync()`). Après modification d'une entité ou de `BotDbContext`, générez une nouvelle migration avec :
+  ```bash
+  dotnet ef migrations add <NomMigration> --output-dir Core/Database/Migrations
   ```
 * **CI/CD** : Le workflow GitHub Actions (`.github/workflows/ci.yml`) exécute la compilation Release, les tests unitaires NUnit et l'audit des vulnérabilités NuGet sur la branche `main`.
 * **Règles de développement** : Consultez [AGENTS.md](AGENTS.md) pour les conventions de code, l'architecture et le pipeline `/forge`.

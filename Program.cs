@@ -150,11 +150,11 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<System.IO.Abstractions.IFileSystem, System.IO.Abstractions.FileSystem>();
 
-// Base de données relationnelle locale SQLite (EF Core 10)
-var connectionString = builder.Configuration.GetConnectionString("BotDb") ?? "Data Source=data/bot.db";
+// Base de données relationnelle PostgreSQL (EF Core 10)
+var pgConnectionString = DatabaseConnectionStringResolver.Resolve(builder.Configuration);
 builder.Services.AddDbContextFactory<BotDbContext>(options =>
 {
-    options.UseSqlite(connectionString);
+    options.UseNpgsql(pgConnectionString);
 });
 builder.Services.AddSingleton<DatabaseInitializationService>();
 
@@ -222,7 +222,7 @@ builder.Services.AddHostedService<DiscordBotService>();
 
 var app = builder.Build();
 
-// Initialisation de la base de données SQLite
+// Initialisation et migration de la base de données PostgreSQL
 using (var scope = app.Services.CreateScope())
 {
     var initService = scope.ServiceProvider.GetRequiredService<DatabaseInitializationService>();
