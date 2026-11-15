@@ -1,4 +1,5 @@
 @namespace DiscordBot.Components.Pages
+@inject TimeProvider TimeProvider
 
 <div class="discord-preview-container p-3 rounded" style="background-color: #313338; color: #dbdee1; font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 520px;">
     <!-- Pseudo-message header -->
@@ -10,7 +11,7 @@
             <div class="d-flex align-items-center gap-2">
                 <span class="fw-bold text-white" style="font-size: 0.95rem;">DiscordBot</span>
                 <span class="badge" style="background-color: #5865F2; font-size: 0.65rem; padding: 2px 4px;">BOT</span>
-                <span class="text-secondary" style="font-size: 0.75rem;">Aujourd'hui à @(DateTime.Now.ToString("HH:mm"))</span>
+                <span class="text-secondary" style="font-size: 0.75rem;">Aujourd'hui à @(TimeProvider.GetLocalNow().ToString("HH:mm"))</span>
             </div>
             <div class="text-secondary" style="font-size: 0.8rem;">Exemple de notification Discord</div>
         </div>
@@ -22,7 +23,7 @@
         @if (Template?.EnableAuthor == true && !string.IsNullOrWhiteSpace(RenderedAuthorName))
         {
             <div class="d-flex align-items-center gap-2 mb-2">
-                @if (!string.IsNullOrWhiteSpace(AuthorIconUrl))
+                @if (!string.IsNullOrWhiteSpace(AuthorIconUrl) && EmbedTemplateRenderer.IsValidHttpUrl(AuthorIconUrl))
                 {
                     <img src="@AuthorIconUrl" alt="Author Icon" class="rounded-circle" style="width: 22px; height: 22px; object-fit: cover;" />
                 }
@@ -36,9 +37,16 @@
         @if (!string.IsNullOrWhiteSpace(RenderedTitle))
         {
             <div class="fw-bold mb-2" style="font-size: 1rem;">
-                <a href="@(EmbedUrl ?? "#")" target="_blank" class="text-decoration-none" style="color: #00a8fc;">
-                    @RenderedTitle
-                </a>
+                @if (EmbedTemplateRenderer.IsValidHttpUrl(EmbedUrl))
+                {
+                    <a href="@EmbedUrl" target="_blank" rel="noopener noreferrer" class="text-decoration-none" style="color: #00a8fc;">
+                        @RenderedTitle
+                    </a>
+                }
+                else
+                {
+                    <span style="color: #00a8fc;">@RenderedTitle</span>
+                }
             </div>
         }
 
@@ -69,7 +77,7 @@
         }
 
         <!-- Image Banner -->
-        @if (Template?.ShowThumbnail == true && !string.IsNullOrWhiteSpace(ImageUrl))
+        @if (Template?.ShowThumbnail == true && !string.IsNullOrWhiteSpace(ImageUrl) && EmbedTemplateRenderer.IsValidHttpUrl(ImageUrl))
         {
             <div class="mt-2 mb-2">
                 <img src="@ImageUrl" alt="Embed Media" class="img-fluid rounded" style="max-height: 240px; width: 100%; object-fit: cover;" />
@@ -90,7 +98,7 @@
                 }
                 @if (Template?.ShowTimestamp == true)
                 {
-                    <span>@(Timestamp?.ToString("dd/MM/yyyy HH:mm") ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</span>
+                    <span>@(Timestamp?.ToString("dd/MM/yyyy HH:mm") ?? TimeProvider.GetLocalNow().ToString("dd/MM/yyyy HH:mm"))</span>
                 }
             </div>
         }
@@ -106,7 +114,15 @@
     [Parameter] public string? ImageUrl { get; set; }
     [Parameter] public DateTimeOffset? Timestamp { get; set; }
 
-    private string SafeColorHex => !string.IsNullOrWhiteSpace(Template?.ColorHex) ? Template.ColorHex : "#9146FF";
+    private string SafeColorHex
+    {
+        get
+        {
+            var defaultColor = EmbedTemplateRenderer.GetDefaultColor(Template?.TemplateType ?? EmbedTemplateTypeDto.TwitchLive);
+            var parsedColor = EmbedTemplateRenderer.ParseColor(Template?.ColorHex, defaultColor);
+            return $"#{parsedColor.RawValue:X6}";
+        }
+    }
 
     private string RenderedTitle => EmbedTemplateRenderer.ReplacePlaceholders(Template?.TitleTemplate ?? string.Empty, Variables);
     private string RenderedDescription => EmbedTemplateRenderer.ReplacePlaceholders(Template?.DescriptionTemplate ?? string.Empty, Variables);

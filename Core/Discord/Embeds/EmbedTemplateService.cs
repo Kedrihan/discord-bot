@@ -353,6 +353,13 @@ public class EmbedTemplateService(
             return new EmbedTestResultDto(false, $"Salon Discord introuvable ou inaccessible par le bot ({discordChannelId}).");
         }
 
+        if (!string.IsNullOrWhiteSpace(template.GuildId) &&
+            channel is SocketGuildChannel sgc &&
+            !string.Equals(sgc.Guild.Id.ToString(), template.GuildId.Trim(), StringComparison.Ordinal))
+        {
+            return new EmbedTestResultDto(false, "Le salon Discord sélectionné n'appartient pas au serveur configuré pour ce modèle.");
+        }
+
         try
         {
             var sample = GetSampleData(type);

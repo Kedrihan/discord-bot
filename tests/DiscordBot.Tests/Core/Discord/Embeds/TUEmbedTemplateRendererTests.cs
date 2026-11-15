@@ -317,4 +317,63 @@ public class TUEmbedTemplateRendererTests
         embed.Fields[1].Name.Should().Be("Field 1");
         embed.Fields[2].Name.Should().Be("Field 2");
     }
+
+    [Test]
+    public void SanitizeUntrustedText_ShouldNeutralizeZeroWidthAndRoleMentions()
+    {
+        // Arrange
+        var zeroWidthEveryone = "@\u200beveryone";
+        var zeroWidthRole = "<\u200b@\u200b&123456789>";
+        var slashCommand = "</play:123456>";
+
+        // Act
+        var resEveryone = EmbedTemplateRenderer.SanitizeUntrustedText(zeroWidthEveryone);
+        var resRole = EmbedTemplateRenderer.SanitizeUntrustedText(zeroWidthRole);
+        var resSlash = EmbedTemplateRenderer.SanitizeUntrustedText(slashCommand);
+
+        // Assert
+        resEveryone.Should().Be("@\u200beveryone");
+        resRole.Should().Contain("<\u200b@");
+        resSlash.Should().Be("<\u200b/play:123456>");
+    }
+
+    [TestCase("javascript:alert(1)")]
+    [TestCase("JAVASCRIPT:void(0)")]
+    [TestCase("data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==")]
+    [TestCase("vbscript:msgbox(1)")]
+    [TestCase("file:///C:/Windows/System32/calc.exe")]
+    public void IsValidHttpUrl_ShouldRejectDangerousSchemes(string dangerousUrl)
+    {
+        EmbedTemplateRenderer.IsValidHttpUrl(dangerousUrl).Should().BeFalse();
+    }
+
+    [TestCase("red; position: fixed; top: 0;")]
+    [TestCase("#9146FF; background: url('evil.com')")]
+    [TestCase("<script>alert(1)</script>")]
+    public void ParseColor_ShouldRejectCssInjectionPayloads(string maliciousColor)
+    {
+        var defaultColor = new Color(0x91, 0x46, 0xFF);
+        var parsed = EmbedTemplateRenderer.ParseColor(maliciousColor, defaultColor);
+
+        parsed.Should().Be(defaultColor);
+        var safeHex = $"#{parsed.RawValue:X6}";
+        safeHex.Should().Be("#9146FF");
+    }
+
+    [Test]
+    public void ReplacePlaceholders_ShouldHandleLargeInputs_WithoutReDoS()
+    {
+        // Arrange
+        var largeInput = new string('@', 10000) + "everyone";
+        var variables = new Dictionary<string, string>
+        {
+            ["test"] = largeInput
+        };
+
+        // Act
+        var act = () => EmbedTemplateRenderer.ReplacePlaceholders("{test}", variables);
+
+        // Assert
+        act.Should().NotThrow();
+    }
 }

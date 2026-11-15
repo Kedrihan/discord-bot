@@ -16,22 +16,22 @@ public partial class EmbedTemplateRenderer(TimeProvider timeProvider)
     public const int MaxFieldsCount = 25;
     public const int MaxTotalLength = 6000;
 
-    [GeneratedRegex(@"\{([a-zA-Z0-9_]+)\}")]
+    [GeneratedRegex(@"\{([a-zA-Z0-9_]+)\}", RegexOptions.None, 1000)]
     private static partial Regex PlaceholderRegex();
 
-    [GeneratedRegex(@"@[\u200B-\u200D\uFEFF\u200E\u200F\s]*everyone", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"@[\u200B-\u200D\uFEFF\u200E\u200F\s]*everyone", RegexOptions.IgnoreCase, 1000)]
     private static partial Regex EveryoneMentionRegex();
 
-    [GeneratedRegex(@"@[\u200B-\u200D\uFEFF\u200E\u200F\s]*here", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    [GeneratedRegex(@"@[\u200B-\u200D\uFEFF\u200E\u200F\s]*here", RegexOptions.IgnoreCase, 1000)]
     private static partial Regex HereMentionRegex();
 
-    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*@(&|!)?", RegexOptions.Compiled)]
+    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*@[\u200B-\u200D\uFEFF\u200E\u200F]*(&|!)?", RegexOptions.None, 1000)]
     private static partial Regex DiscordUserOrRoleMentionRegex();
 
-    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*#", RegexOptions.Compiled)]
+    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*#", RegexOptions.None, 1000)]
     private static partial Regex DiscordChannelMentionRegex();
 
-    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*/", RegexOptions.Compiled)]
+    [GeneratedRegex(@"<[\u200B-\u200D\uFEFF\u200E\u200F]*/", RegexOptions.None, 1000)]
     private static partial Regex DiscordSlashCommandMentionRegex();
 
     public Embed RenderEmbed(

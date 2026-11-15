@@ -22,4 +22,15 @@ public class TUEmbedsPageTests
         authAttrs.Should().NotBeEmpty();
         authAttrs.Should().Contain(a => a.Policy == "AdminAccess");
     }
+
+    [Test]
+    public void DiscordEmbedPreview_ShouldExist_AndNotExposeRawMarkupString()
+    {
+        var previewType = typeof(DiscordEmbedPreview);
+        previewType.Should().NotBeNull();
+
+        // Verify no public fields or properties exposing MarkupString
+        var properties = previewType.GetProperties();
+        properties.Should().NotContain(p => p.PropertyType == typeof(MarkupString));
+    }
 }

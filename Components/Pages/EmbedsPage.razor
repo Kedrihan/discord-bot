@@ -71,7 +71,10 @@
                 <div class="col-md-3">
                     <label class="form-label fw-bold mb-1 small text-secondary">Portée du modèle</label>
                     <select class="form-select form-select-sm" @onchange="OnScopeModeChanged">
-                        <option value="global" selected="@(isGlobalScope)">🌐 Modèle global (par défaut)</option>
+                        @if (isSuperAdmin)
+                        {
+                            <option value="global" selected="@(isGlobalScope)">🌐 Modèle global (par défaut)</option>
+                        }
                         <option value="override" selected="@(!isGlobalScope)">🎯 Surcharge spécifique (Serveur / Chaîne)</option>
                     </select>
                 </div>
@@ -385,16 +388,30 @@
             .Union(PermissionService.GetAuthorizedGuildIds(currentUser, GuildFeatureFlagsDto.YouTube))
             .ToList();
 
-        if (!string.IsNullOrWhiteSpace(QueryType) && Enum.TryParse<EmbedTemplateTypeDto>(QueryType, true, out var parsedType))
+        if (!isSuperAdmin)
         {
-            selectedType = parsedType;
+            isGlobalScope = false;
+            if (!string.IsNullOrWhiteSpace(QueryGuildId) && authorizedGuildIds.Contains(QueryGuildId))
+            {
+                selectedGuildId = QueryGuildId;
+                selectedTargetId = QueryTargetId ?? string.Empty;
+            }
+            else
+            {
+                selectedGuildId = authorizedGuildIds.FirstOrDefault() ?? string.Empty;
+                selectedTargetId = string.Empty;
+            }
         }
-
-        if (!string.IsNullOrWhiteSpace(QueryGuildId))
+        else if (!string.IsNullOrWhiteSpace(QueryGuildId))
         {
             isGlobalScope = false;
             selectedGuildId = QueryGuildId;
             selectedTargetId = QueryTargetId ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(QueryType) && Enum.TryParse<EmbedTemplateTypeDto>(QueryType, true, out var parsedType))
+        {
+            selectedType = parsedType;
         }
 
         await LoadCurrentTemplateAsync();
@@ -410,7 +427,7 @@
     private void OnScopeModeChanged(ChangeEventArgs e)
     {
         var mode = e.Value?.ToString();
-        isGlobalScope = (mode == "global");
+        isGlobalScope = isSuperAdmin && (mode == "global");
         if (isGlobalScope)
         {
             selectedGuildId = string.Empty;
@@ -540,14 +557,38 @@
         }
     }
 
+    private static GuildFeatureFlagsDto GetRequiredFeature(EmbedTemplateTypeDto type) => type switch
+    {
+        EmbedTemplateTypeDto.TwitchLive or EmbedTemplateTypeDto.TwitchClip => GuildFeatureFlagsDto.Twitch,
+        EmbedTemplateTypeDto.YouTubeVideo => GuildFeatureFlagsDto.YouTube,
+        _ => GuildFeatureFlagsDto.None
+    };
+
     private async Task SaveTemplateAsync()
     {
+        var gId = isGlobalScope ? string.Empty : selectedGuildId;
+        var tId = isGlobalScope ? string.Empty : selectedTargetId;
+
+        if (isGlobalScope && !isSuperAdmin)
+        {
+            feedbackMessage = "Action non autorisée : seuls les administrateurs globaux peuvent modifier le modèle global.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (!isGlobalScope)
+        {
+            if (string.IsNullOrWhiteSpace(gId) || (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser!, gId, GetRequiredFeature(selectedType))))
+            {
+                feedbackMessage = "Action non autorisée : vous n'avez pas accès à ce serveur Discord.";
+                isSuccessFeedback = false;
+                return;
+            }
+        }
+
         isSaving = true;
         try
         {
-            var gId = isGlobalScope ? string.Empty : selectedGuildId;
-            var tId = isGlobalScope ? string.Empty : selectedTargetId;
-
             var dto = new DiscordEmbedTemplateDto
             {
                 TemplateType = selectedType,
@@ -583,6 +624,23 @@
     {
         var gId = isGlobalScope ? string.Empty : selectedGuildId;
         var tId = isGlobalScope ? string.Empty : selectedTargetId;
+
+        if (isGlobalScope && !isSuperAdmin)
+        {
+            feedbackMessage = "Action non autorisée : seuls les administrateurs globaux peuvent réinitialiser le modèle global.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (!isGlobalScope)
+        {
+            if (string.IsNullOrWhiteSpace(gId) || (!isSuperAdmin && !PermissionService.HasGuildFeatureAccess(currentUser!, gId, GetRequiredFeature(selectedType))))
+            {
+                feedbackMessage = "Action non autorisée : vous n'avez pas accès à ce serveur Discord.";
+                isSuccessFeedback = false;
+                return;
+            }
+        }
 
         if (!isGlobalScope)
         {
@@ -628,6 +686,13 @@
         if (string.IsNullOrWhiteSpace(testDiscordChannelId))
         {
             feedbackMessage = "Veuillez choisir un salon Discord pour l'envoi du test.";
+            isSuccessFeedback = false;
+            return;
+        }
+
+        if (!isSuperAdmin && !PermissionService.CanManageDiscordChannel(currentUser!, testDiscordChannelId, GetRequiredFeature(selectedType)))
+        {
+            feedbackMessage = "Action non autorisée : vous ne disposez pas des permissions requises pour envoyer un test dans ce salon Discord.";
             isSuccessFeedback = false;
             return;
         }

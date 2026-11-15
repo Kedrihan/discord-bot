@@ -211,4 +211,17 @@ public class TUEmbedTemplateServiceTests
         result.Success.Should().BeFalse();
         result.Message.Should().Contain("introuvable");
     }
+
+    [Test]
+    public async Task SendTestEmbedAsync_WithGuildMismatch_ShouldReturnError()
+    {
+        // Arrange
+        var template = _service.GetDefaultTemplate(EmbedTemplateTypeDto.TwitchLive) with { GuildId = "999888777" };
+
+        // Act
+        var result = await _service.SendTestEmbedAsync(EmbedTemplateTypeDto.TwitchLive, template, "123456789012345678");
+
+        // Assert
+        result.Success.Should().BeFalse();
+    }
 }
