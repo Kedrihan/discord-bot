@@ -1,0 +1,38 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [ production ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy sur Ubuntu VM
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Génération du fichier .env depuis les secrets GitHub
+        run: |
+          umask 077
+          cat << 'EOF' > .env
+          DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}
+          DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}
+          DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}
+          DISCORD_ADMIN_USER_ID=${{ secrets.DISCORD_ADMIN_USER_ID }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL=postgresql://discordbot:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/discordbot
+          TWITCH_CLIENT_ID=${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}
+          TWITCH_USER_ACCESS_TOKEN=${{ secrets.TWITCH_USER_ACCESS_TOKEN }}
+          TRUSTED_PROXY_IP=${{ secrets.TRUSTED_PROXY_IP }}
+          EOF
+
+      - name: Build et démarrage des conteneurs Docker
+        run: |
+          docker compose -p discord-bot -f compose.prod.yaml up -d --build --remove-orphans
+          docker image prune -f

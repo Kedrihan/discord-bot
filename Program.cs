@@ -34,6 +34,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    var trustedProxy = builder.Configuration["TRUSTED_PROXY_IP"] ?? Environment.GetEnvironmentVariable("TRUSTED_PROXY_IP");
+    if (System.Net.IPAddress.TryParse(trustedProxy, out var proxyIp))
+    {
+        options.KnownProxies.Add(proxyIp);
+    }
+    else
+    {
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
 });
 
 // Configuration de Blazor Server
