@@ -40,4 +40,26 @@ public class TUTechWatchServiceTests
         // Assert
         urls.Should().BeEmpty();
     }
+
+    [Test]
+    public void ExtractUrls_ShouldExtractMarkdownBareAndDeduplicatedUrls()
+    {
+        // Arrange
+        var message = """
+            • **Article Markdown**
+              [Lire l'article](https://dev.to/markdown-article)
+            • **Article Nu**
+              https://news.ycombinator.com/item?id=42.
+            • **Doublon**
+              <https://dev.to/markdown-article>
+            """;
+
+        // Act
+        var urls = TechWatchService.ExtractUrls(message);
+
+        // Assert
+        urls.Should().HaveCount(2);
+        urls.Should().Contain("https://dev.to/markdown-article");
+        urls.Should().Contain("https://news.ycombinator.com/item?id=42");
+    }
 }

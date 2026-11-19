@@ -91,6 +91,11 @@ public class TechWatchService(
                 if (extractedUrls.Count > 0)
                 {
                     await historyService.MarkAsSentAsync(extractedUrls, cancellationToken);
+                    logger.LogInformation("{Count} URL(s) enregistrée(s) dans SentArticles.", extractedUrls.Count);
+                }
+                else
+                {
+                    logger.LogWarning("Aucune URL extraite du message de veille technologique ; SentArticles non mis à jour.");
                 }
             }
 
@@ -106,15 +111,27 @@ public class TechWatchService(
 
     public static List<string> ExtractUrls(string text)
     {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [];
+        }
+
         List<string> urls = [];
-        var matches = Regex.Matches(text, @"<((?:https?:\/\/)[^>]+)>");
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        var matches = Regex.Matches(text, @"<((?:https?:\/\/)[^>\s]+)>|(https?:\/\/[^\s<>""'\)\]]+)");
+
         foreach (Match match in matches)
         {
-            if (match.Groups.Count > 1)
+            var rawUrl = match.Groups[1].Success
+                ? match.Groups[1].Value
+                : match.Groups[2].Value.TrimEnd('.', ',', ';', ':', '!', '?');
+
+            if (!string.IsNullOrWhiteSpace(rawUrl) && seen.Add(rawUrl))
             {
-                urls.Add(match.Groups[1].Value);
+                urls.Add(rawUrl);
             }
         }
+
         return urls;
     }
 }
