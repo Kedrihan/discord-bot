@@ -33,7 +33,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Configuration des en-têtes transférés (nécessaire derrière Docker / Reverse Proxy)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit = null;
     var trustedProxy = builder.Configuration["TRUSTED_PROXY_IP"] ?? Environment.GetEnvironmentVariable("TRUSTED_PROXY_IP");
     if (System.Net.IPAddress.TryParse(trustedProxy, out var proxyIp))
     {
@@ -97,6 +98,14 @@ if (isOAuthConfigured)
 
         options.Events = new OAuthEvents
         {
+            OnRemoteFailure = context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("DiscordOAuth");
+                logger.LogError(context.Failure, "Échec de l'authentification Discord OAuth (/signin-discord).");
+                context.Response.Redirect("/?oauth=error");
+                context.HandleResponse();
+                return Task.CompletedTask;
+            },
             OnCreatingTicket = async context =>
             {
                 var request = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);
