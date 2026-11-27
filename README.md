@@ -50,7 +50,7 @@ Ce projet combine un **Bot Discord** (avec modules automatisés : Veille Tech IA
 Le projet suit une architecture **Vertical Slices / Feature-Driven** :
 
 ```text
-├── Core/                # Infrastructure transversale (Database, Discord, Permissions, Scheduling, Settings)
+├── Core/                # Infrastructure transversale (AI, Database, Discord, Permissions, Scheduling, Settings)
 ├── Features/            # Tranches verticales métier (MorningBriefing, TechWatch, Twitch, YouTube)
 ├── DTO/                 # Projet dédié aux DTOs et modèles de configuration (DTO.csproj)
 ├── Components/          # Interface Web Blazor Server (Layout, Pages)

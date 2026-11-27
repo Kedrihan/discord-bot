@@ -13,6 +13,12 @@ public class NewsAggregatorService(
     SentArticlesHistoryService historyService,
     ILogger<NewsAggregatorService> logger)
 {
+    private static readonly HashSet<string> AllowedLanguageCodes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "en",
+        "fr"
+    };
+
     public async Task<List<NewsArticleDto>> FetchAllArticlesAsync(TechWatchSettingsDto settings, bool filterDuplicates = true, CancellationToken cancellationToken = default)
     {
         EnsureUserAgent();
@@ -54,6 +60,15 @@ public class NewsAggregatorService(
             }
         }
 
+        // Filtrage linguistique (français et anglais uniquement)
+        var totalBeforeLanguageFilter = articles.Count;
+        articles = articles.Where(IsAllowedLanguage).ToList();
+        var filteredOutByLanguage = totalBeforeLanguageFilter - articles.Count;
+        if (filteredOutByLanguage > 0)
+        {
+            logger.LogInformation("{Count} article(s) ignoré(s) car hors français/anglais.", filteredOutByLanguage);
+        }
+
         // Déduplication intra-liste par URL
         var distinctArticles = articles
             .GroupBy(a => a.Url.Trim().TrimEnd('/').ToLowerInvariant())
@@ -69,6 +84,65 @@ public class NewsAggregatorService(
         }
 
         return distinctArticles;
+    }
+
+    public static bool IsAllowedLanguage(NewsArticleDto article)
+    {
+        if (article is null || string.IsNullOrWhiteSpace(article.Title))
+        {
+            return false;
+        }
+
+        if (!IsAllowedLanguageCode(article.Language))
+        {
+            return false;
+        }
+
+        if (ContainsUnsupportedScript(article.Title))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool IsAllowedLanguageCode(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return true;
+        }
+
+        var primarySubtag = language.Trim().Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries)[0];
+        return AllowedLanguageCodes.Contains(primarySubtag);
+    }
+
+    internal static bool ContainsUnsupportedScript(string text)
+    {
+        foreach (var ch in text)
+        {
+            var isUnsupported = ch is
+                (>= '\u3040' and <= '\u309F') or // Hiragana
+                (>= '\u30A0' and <= '\u30FF') or // Katakana
+                (>= '\uFF66' and <= '\uFF9D') or // Halfwidth Katakana
+                (>= '\u3400' and <= '\u4DBF') or // CJK Extension A
+                (>= '\u4E00' and <= '\u9FFF') or // CJK Unified Ideographs
+                (>= '\uAC00' and <= '\uD7AF') or // Hangul Syllables
+                (>= '\u1100' and <= '\u11FF') or // Hangul Jamo
+                (>= '\u0400' and <= '\u04FF') or // Cyrillic
+                (>= '\u0600' and <= '\u06FF') or // Arabic
+                (>= '\u0590' and <= '\u05FF') or // Hebrew
+                (>= '\u0900' and <= '\u097F') or // Devanagari
+                (>= '\u0E00' and <= '\u0E7F') or // Thai
+                (>= '\u0370' and <= '\u03FF');   // Greek
+
+            if (isUnsupported)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void EnsureUserAgent()
@@ -88,7 +162,7 @@ public class NewsAggregatorService(
         {
             try
             {
-                var url = $"https://dev.to/api/articles?tag={Uri.EscapeDataString(topic)}&per_page=4";
+                var url = $"https://dev.to/api/articles?tag={Uri.EscapeDataString(topic)}&per_page=8";
                 var response = await httpClient.GetAsync(url, cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
@@ -97,24 +171,37 @@ public class NewsAggregatorService(
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+                var addedForTopic = 0;
                 foreach (var item in doc.RootElement.EnumerateArray())
                 {
                     var title = item.TryGetProperty("title", out var titleProp) ? titleProp.GetString() : null;
                     var articleUrl = item.TryGetProperty("url", out var urlProp) ? urlProp.GetString() : null;
-                    var lang = item.TryGetProperty("language", out var langProp) ? langProp.GetString() : "en";
+                    var lang = item.TryGetProperty("language", out var langProp) ? langProp.GetString() : null;
 
                     if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(articleUrl))
                     {
                         continue;
                     }
 
-                    result.Add(new NewsArticleDto
+                    var article = new NewsArticleDto
                     {
                         Title = title.Trim(),
                         Url = articleUrl.Trim(),
                         Source = $"Dev.to (#{topic})",
-                        Language = lang ?? "en"
-                    });
+                        Language = string.IsNullOrWhiteSpace(lang) ? "en" : lang.Trim()
+                    };
+
+                    if (!IsAllowedLanguage(article))
+                    {
+                        continue;
+                    }
+
+                    result.Add(article);
+                    addedForTopic++;
+                    if (addedForTopic >= 4)
+                    {
+                        break;
+                    }
                 }
             }
             catch (Exception ex)
@@ -208,6 +295,9 @@ public class NewsAggregatorService(
             using var stringReader = new StringReader(content);
             using var xmlReader = XmlReader.Create(stringReader, xmlSettings);
             var xDoc = XDocument.Load(xmlReader);
+            var feedLanguage = xDoc.Descendants("channel").Elements("language").FirstOrDefault()?.Value
+                ?? xDoc.Root?.Attribute(XNamespace.Xml + "lang")?.Value
+                ?? "en";
 
             // RSS standard (channel -> item)
             var items = xDoc.Descendants("item");
@@ -226,7 +316,7 @@ public class NewsAggregatorService(
                     Title = title.Trim(),
                     Url = link.Trim(),
                     Source = sourceName,
-                    Language = "en"
+                    Language = feedLanguage.Trim()
                 });
             }
 
@@ -250,7 +340,7 @@ public class NewsAggregatorService(
                         Title = title.Trim(),
                         Url = link.Trim(),
                         Source = sourceName,
-                        Language = "en"
+                        Language = feedLanguage.Trim()
                     });
                 }
             }

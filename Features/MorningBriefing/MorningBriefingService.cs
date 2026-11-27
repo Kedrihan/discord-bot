@@ -1,11 +1,10 @@
 ﻿using System.Text.Json;
 using Discord;
 using Discord.WebSocket;
+using DiscordBot.Core.AI;
 using DiscordBot.DTO.Common;
 using DiscordBot.DTO.MorningBriefing;
 using DiscordBot.Features.TechWatch;
-using Google.GenAI;
-using Google.GenAI.Types;
 
 namespace DiscordBot.Features.MorningBriefing;
 
@@ -14,8 +13,8 @@ public class MorningBriefingService(
     MorningBriefingConfigService configService,
     TechWatchConfigService techWatchConfigService,
     OpenMeteoService weatherService,
-    ILogger<MorningBriefingService> logger,
-    IConfiguration? configuration = null)
+    GeminiClientService geminiClient,
+    ILogger<MorningBriefingService> logger)
 {
     private record VerdictVisual(Color Color, string Icon);
 
@@ -28,7 +27,7 @@ public class MorningBriefingService(
             return new BriefingExecutionResultDto(false, "Impossible de récupérer les prévisions météo Open-Meteo.");
         }
 
-        var briefingResult = await AnalyzeWithGeminiAsync(commute.Aller, commute.Retour, settings);
+        var briefingResult = await AnalyzeWithGeminiAsync(commute.Aller, commute.Retour, cancellationToken);
         var embed = BuildDiscordEmbed(briefingResult, commute.Aller, commute.Retour, settings, isManualTest);
         return new BriefingExecutionResultDto(true, "Briefing généré avec succès.", embed);
     }
@@ -97,23 +96,17 @@ public class MorningBriefingService(
         }
     }
 
-    private async Task<MorningBriefingResultDto> AnalyzeWithGeminiAsync(CommuteSlotSummaryDto aller, CommuteSlotSummaryDto retour, MorningBriefingSettingsDto settings)
+    private async Task<MorningBriefingResultDto> AnalyzeWithGeminiAsync(
+        CommuteSlotSummaryDto aller,
+        CommuteSlotSummaryDto retour,
+        CancellationToken cancellationToken)
     {
-        var apiKey = configuration?["GEMINI_API_KEY"] ?? System.Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-        var model = techWatchConfigService.GetSettings().GeminiModel;
-        if (string.IsNullOrWhiteSpace(model) || model.StartsWith("gemini-1.") || model == "gemini-2.0-flash")
-        {
-            model = "gemini-flash-latest";
-        }
-
-        if (string.IsNullOrWhiteSpace(apiKey))
+        if (!geminiClient.IsConfigured)
         {
             return BuildLocalAnalysis(aller, retour);
         }
 
-        try
-        {
-            var prompt = $$"""
+        var prompt = $$"""
 Tu es un assistant météo et mobilité vélo pour l'agglomération de Lyon.
 Analyse les prévisions météo pour aujourd'hui pour les trajets vélo de Corentin :
 - Trajet Aller ({{aller.TimeRange}}) : {{aller.MainEmoji}} {{aller.MainCondition}}, Température {{aller.MinTemp:F1}}°C à {{aller.MaxTemp:F1}}°C, Risque pluie {{aller.MaxRainProbability}}%, Cumul pluie {{aller.TotalPrecipitation:F1}}mm, Vent {{aller.MaxWindSpeed:F0}} km/h, Rafales max {{aller.MaxWindGusts:F0}} km/h.
@@ -133,37 +126,21 @@ Consignes strictes :
 }
 """;
 
-            var client = new Client(apiKey: apiKey);
-            var config = new GenerateContentConfig
-            {
-                ResponseMimeType = "application/json"
-            };
+        var preferredModel = techWatchConfigService.GetSettings().GeminiModel;
+        var text = await geminiClient.GenerateContentAsync(
+            prompt,
+            preferredModel: preferredModel,
+            responseMimeType: "application/json",
+            cancellationToken: cancellationToken);
 
-            GenerateContentResponse? response = null;
-            try
-            {
-                response = await client.Models.GenerateContentAsync(
-                    model: model,
-                    contents: prompt,
-                    config: config
-                );
-            }
-            catch (Exception ex) when (model != "gemini-flash-latest")
-            {
-                logger.LogWarning(ex, "Le modèle {Model} a échoué. Repli avec le SDK Google Gen AI sur gemini-flash-latest...", model);
-                response = await client.Models.GenerateContentAsync(
-                    model: "gemini-flash-latest",
-                    contents: prompt,
-                    config: config
-                );
-            }
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            logger.LogWarning("L'appel Gemini a échoué pour le briefing. Utilisation de l'analyse locale.");
+            return BuildLocalAnalysis(aller, retour);
+        }
 
-            var text = response?.Text;
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return BuildLocalAnalysis(aller, retour);
-            }
-
+        try
+        {
             using var parsedJson = JsonDocument.Parse(text);
             var root = parsedJson.RootElement;
 
@@ -189,9 +166,9 @@ Consignes strictes :
                 Advice = adv ?? string.Empty
             };
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            logger.LogWarning(ex, "Le SDK Google Gen AI a échoué pour le briefing. Utilisation de l'analyse locale.");
+            logger.LogWarning(ex, "Réponse JSON Gemini invalide pour le briefing. Utilisation de l'analyse locale.");
             return BuildLocalAnalysis(aller, retour);
         }
     }

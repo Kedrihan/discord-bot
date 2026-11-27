@@ -5,6 +5,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using DiscordBot.Components;
+using DiscordBot.Core.AI;
 using DiscordBot.Core.Database;
 using DiscordBot.Core.Database.Services;
 using DiscordBot.Core.Discord;
@@ -165,9 +166,10 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
-// Abstractions d'infrastructure (Temps et Système de fichiers)
+// Abstractions d'infrastructure (Temps, Système de fichiers et Client IA)
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<System.IO.Abstractions.IFileSystem, System.IO.Abstractions.FileSystem>();
+builder.Services.AddSingleton<GeminiClientService>();
 
 // Base de données relationnelle PostgreSQL (EF Core 10)
 var pgConnectionString = DatabaseConnectionStringResolver.Resolve(builder.Configuration);

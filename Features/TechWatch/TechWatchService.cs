@@ -44,7 +44,7 @@ public class TechWatchService(
         }
 
         // 2. Synthèse et formatage
-        var formattedArticles = await geminiSummarizer.SummarizeAndFormatArticlesAsync(articles, settings);
+        var formattedArticles = await geminiSummarizer.SummarizeAndFormatArticlesAsync(articles, settings, cancellationToken);
 
         // 3. Construction du message final Discord sécurisé
         var header = isManualTest ? "🧪 **[Test] Veille Dev Web & IA**" : "🖥️ **Veille Dev Web & IA**";
